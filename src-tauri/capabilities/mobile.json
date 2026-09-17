@@ -1,0 +1,29 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "mobile",
+  "description": "Capabilities for the Android (and iOS, if ever built) shell. Scoped to the app's own private storage instead of $DOCUMENT, since Android's scoped-storage rules mean a bare $DOCUMENT/TurfApp/** scope (used in default.json for desktop) does not behave the same way here. NOTE: no 'platforms' key is set (see docs/android-port-notes.md) — this currently applies on every target, not just mobile. That's harmless here (it only grants an additional, unused fs scope on desktop/browser builds — 'unused' because desktop.ts's resolveAppDocsBase() only reaches for AppLocalData when Document can't be resolved, which it always can on desktop) but should be tightened once the correct 'platforms' enum casing is confirmed against the generated schema.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+
+    "dialog:default",
+
+    "fs:default",
+    "fs:allow-exists",
+    "fs:allow-mkdir",
+    "fs:allow-write-file",
+    "fs:allow-read-file",
+    "fs:allow-read-text-file",
+    {
+      "identifier": "fs:scope",
+      "allow": [{ "path": "$APPDATA/TurfApp/**" }, { "path": "$APPLOCALDATA/TurfApp/**" }]
+    },
+
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://**" }, { "url": "http://**" }]
+    },
+
+    "android-save:default"
+  ]
+}

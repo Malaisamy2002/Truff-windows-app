@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Only used by AndroidSavePlugin.openFile() on API <= 28, where saveToDownloads()
+  writes directly to Environment.getExternalStoragePublicDirectory(DIRECTORY_DOWNLOADS)
+  (external storage root + "Download/"). API 29+ never reaches openFile(); it opens
+  the MediaStore content:// URI via openUri() instead, so no path entry is needed
+  for that case.
+-->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <external-path
+        name="android_save_legacy_downloads"
+        path="Download/" />
+</paths>

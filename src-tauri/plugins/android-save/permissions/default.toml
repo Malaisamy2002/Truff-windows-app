@@ -1,0 +1,5 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = "Allows saving generated files into the public Downloads folder."
+permissions = ["allow-save-to-downloads"]

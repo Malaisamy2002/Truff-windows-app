@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # `npm run verify` (lint+test) deliberately excludes
+      # typecheck locally — Step 20 made that call back when both apps had
+      # a nonzero baseline tsc error count that would've made a hard gate
+      # fail without signaling anything new. That baseline is 0 as of Step
+      # 39, so CI runs typecheck as its own blocking step instead of
+      # inheriting the old exclusion; if it ever goes non-zero again,
+      # switch this back to `continue-on-error: true` until it's paid down.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint + tests + shared-domain parity
+        run: npm run verify
+
+      - name: Build
+        run: npm run build

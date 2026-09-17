@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+.output/
+.vite/
+.nitro/
+
+# Tauri (Rust build artifacts + generated mobile projects)
+src-tauri/target/
+src-tauri/gen/
+
+# Env / local secrets
+.env
+.env.local
+.env.*.local
+
+# Code-signing material — never commit real keys/certs
+*.keystore
+*.jks
+*.pfx
+*.p12
+keystore.properties
+key.properties
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Test/coverage output
+coverage/

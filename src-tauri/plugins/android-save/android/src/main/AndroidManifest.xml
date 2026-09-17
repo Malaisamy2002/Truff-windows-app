@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Only needed on Android 9 and older; API 29+ writes through MediaStore,
+         which requires no runtime permission at all. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
+    <application>
+        <!-- Backs FileProvider.getUriForFile(..., "${applicationId}.fileprovider", ...)
+             in AndroidSavePlugin.openFile(), used only on API <= 28 to open a saved
+             file via ACTION_VIEW after save/print/share. Without this declaration the
+             call throws, openFile() swallows it and falls back to Uri.fromFile(), and
+             the resulting intent silently fails to resolve. API 29+ opens via the
+             MediaStore content:// URI directly and doesn't need this. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true"
+            tools:node="merge">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/android_save_file_paths" />
+        </provider>
+    </application>
+</manifest>

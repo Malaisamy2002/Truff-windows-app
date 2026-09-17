@@ -1,0 +1,50 @@
+[package]
+name = "turf-ledger"
+version = "0.1.0"
+description = "Turf Bookings & Sales Ledger desktop app"
+edition = "2021"
+rust-version = "1.77.2"
+
+# See https://tauri.app/v1/guides/getting-started/setup/ for more info
+[lib]
+name = "turf_ledger_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-android-save = { path = "plugins/android-save" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Backs the keyring_get_token / keyring_set_token / keyring_delete_token
+# commands in src/lib.rs, which store the Telegram bot token and the backup
+# passphrase in the OS credential store (Windows Credential Manager / macOS
+# Keychain / Secret Service via libsecret on Linux) instead of plain
+# localStorage. Not available on Android — see the target_os guard around
+# those commands.
+[target.'cfg(not(target_os = "android"))'.dependencies]
+keyring = "2"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
+
+# The Android CI workflow builds `--debug` (no release keystore configured
+# yet — see build-android.yml), which uses this `dev` profile, not the one
+# above. Without an override here, `dev` keeps full DWARF debug symbols in
+# the compiled .so — that's what was making even a single-ABI debug APK
+# 100-200MB. `strip = "debuginfo"` drops those symbols while leaving the
+# build otherwise unoptimized and still debuggable at the Android/JS layer
+# (this only affects native Rust backtraces, which the app doesn't rely on
+# for debugging — most issues surface in the webview/JS side anyway).
+[profile.dev]
+strip = "debuginfo"
