@@ -153,9 +153,10 @@ export function CustomerDetailContent({
   const tabBalance = name
     ? (tabSummaries.get(tabKey(name, phone))?.balance ?? 0)
     : 0;
-  const myEntries = name
-    ? tabEntries.filter((e) => e.customer_key === tabKey(name, phone))
-    : [];
+  const myEntries = useMemo(
+    () => (name ? tabEntries.filter((e) => e.customer_key === tabKey(name, phone)) : []),
+    [name, phone, tabEntries],
+  );
   const updateBooking = useUpdateTurfBooking();
   const updateBill = useUpdateBill();
   const { settleAll: settleCustomer, isPending: settlingAll } =

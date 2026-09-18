@@ -33,7 +33,7 @@ import {
   type ReceiptDoc,
 } from "@/lib/receipt";
 
-type PreviewRequest = {
+export type PreviewRequest = {
   doc: ReceiptDoc;
   section: InvoiceSection | undefined;
 } | null;
@@ -54,23 +54,7 @@ type PreviewRequest = {
  * a customer who wants an A4 copy "just this once" shouldn't silently
  * change what every future thermal receipt prints on.
  */
-export function usePrintPreview() {
-  const [request, setRequest] = useState<PreviewRequest>(null);
-  return {
-    openPreview: (doc: ReceiptDoc, section?: InvoiceSection) =>
-      setRequest({ doc, section }),
-    previewDialog: (
-      <PrintPreviewDialog
-        request={request}
-        onOpenChange={(open) => {
-          if (!open) setRequest(null);
-        }}
-      />
-    ),
-  };
-}
-
-function PrintPreviewDialog({
+export function PrintPreviewDialog({
   request,
   onOpenChange,
 }: {

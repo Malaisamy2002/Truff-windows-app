@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   CalendarPlus,
   Cookie,
@@ -18,11 +18,7 @@ import {
   CommandSeparator,
   CommandShortcut,
 } from "@/components/ui/command";
-
-const isMac =
-  typeof navigator !== "undefined" &&
-  /Mac|iPhone|iPad/.test(navigator.platform ?? "");
-const MOD_LABEL = isMac ? "⌘K" : "Ctrl+K";
+import { MOD_LABEL } from "@/lib/command-palette-shortcut";
 
 /**
  * After switching tabs, the destination tab's content is lazy-loaded, so its
@@ -158,22 +154,3 @@ export function CommandPalette({
     </CommandDialog>
   );
 }
-
-/** Mount once near the root. Owns only the Ctrl/Cmd+K key binding — the
- * dialog's own open state still lives in the parent, same pattern as
- * `DataEntryShortcuts`' Esc-to-close being handled by the underlying Dialog
- * primitive rather than this hook. */
-export function useCommandPaletteShortcut(onOpen: () => void) {
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        onOpen();
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onOpen]);
-}
-
-export { MOD_LABEL };

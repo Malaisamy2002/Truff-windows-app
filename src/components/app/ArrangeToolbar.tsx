@@ -32,7 +32,7 @@ import {
 } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ConfirmDeleteButton } from "./ConfirmDeleteButton";
-import { useArrangeMode } from "@/lib/arrange-mode";
+import { useArrangeMode } from "@/lib/arrange-mode-context";
 import { dayKey } from "@/lib/analytics";
 import {
   LOCKED_TAB_ID,

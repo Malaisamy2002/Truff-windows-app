@@ -68,6 +68,20 @@ describe("taxBreakdown()", () => {
     expect(cgst! + sgst!).toBe(taxAmount);
   });
 
+  it("CGST always equals SGST, even when the combined GST would round to an odd rupee", () => {
+    // Each half must be rounded independently (a hard GST-portal rule) —
+    // splitting one pre-rounded combined figure in half can silently
+    // produce CGST != SGST whenever that figure is odd. Sweep enough
+    // taxable amounts and rates to hit that odd-rupee case repeatedly.
+    for (const rate of [5, 12, 18, 28]) {
+      for (let taxable = 1; taxable <= 500; taxable++) {
+        const { lines } = taxBreakdown(taxable, settings({ gstRate: rate }));
+        const [cgst, sgst] = lines.map((l) => l.value);
+        expect(cgst).toBe(sgst);
+      }
+    }
+  });
+
   it("adds custom taxes as their own rounded lines", () => {
     const { taxAmount, lines } = taxBreakdown(
       1000,

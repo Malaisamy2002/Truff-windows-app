@@ -296,14 +296,31 @@ export function BillsTab() {
 
   const bulkMarkPaid = async () => {
     const list = bills.filter((b) => selected.includes(b.id));
-    for (const b of list)
-      await updateBill.mutateAsync({
-        id: b.id,
-        status: "paid",
-        amount_paid: billGrossTotal(b),
-      });
-    setSelected([]);
-    toast.success(`${list.length} bills marked paid`);
+    let done = 0;
+    try {
+      for (const b of list) {
+        await updateBill.mutateAsync({
+          id: b.id,
+          status: "paid",
+          amount_paid: billGrossTotal(b),
+        });
+        done += 1;
+      }
+      setSelected([]);
+      toast.success(`${list.length} bills marked paid`);
+    } catch (e) {
+      // Leave the still-unpaid bills selected so the user can see and retry
+      // exactly what didn't go through, instead of the selection silently
+      // clearing on a partial failure.
+      setSelected((prev) =>
+        prev.filter((id) => !list.slice(0, done).some((b) => b.id === id)),
+      );
+      toast.error(
+        done > 0
+          ? `Marked ${done} of ${list.length} paid, then stopped: ${(e as Error).message}`
+          : `Couldn't mark bills paid: ${(e as Error).message}`,
+      );
+    }
   };
 
   const bulkExport = () => {
@@ -316,17 +333,21 @@ export function BillsTab() {
   };
 
   const setPayment = async (bill: Bill, next: BillStatus) => {
-    await updateBill.mutateAsync({
-      id: bill.id,
-      status: next,
-      amount_paid:
-        next === "paid"
-          ? billGrossTotal(bill)
-          : next === "unpaid"
-            ? 0
-            : bill.amount_paid,
-    });
-    toast.success(`Marked ${next}`);
+    try {
+      await updateBill.mutateAsync({
+        id: bill.id,
+        status: next,
+        amount_paid:
+          next === "paid"
+            ? billGrossTotal(bill)
+            : next === "unpaid"
+              ? 0
+              : bill.amount_paid,
+      });
+      toast.success(`Marked ${next}`);
+    } catch (e) {
+      toast.error(`Couldn't update status: ${(e as Error).message}`);
+    }
   };
 
   /**
@@ -466,7 +487,7 @@ export function BillsTab() {
               Outstanding.
             </p>
           ) : (
-            <QuickPayRow bill={bill} />
+            <QuickPayRow bill={bill} allowUpi={!mergedBillIds.has(bill.id)} />
           )}
           <BillActions
             bill={bill}
@@ -501,7 +522,12 @@ export function BillsTab() {
               ariaLabel="Delete cancelled bill"
               title={`Delete ${bill.invoice_no}?`}
               description={`This permanently removes the cancelled record for ${bill.customer_name} and can't be undone.`}
-              onConfirm={() => deleteBill.mutate(bill.id)}
+              onConfirm={() =>
+                deleteBill.mutate(bill.id, {
+                  onSuccess: () => toast.success("Bill deleted"),
+                  onError: (e) => toast.error(e.message),
+                })
+              }
             />
           ) : (
             <div className="flex gap-2">
@@ -545,7 +571,12 @@ export function BillsTab() {
                 title={`Delete bill ${bill.invoice_no}?`}
                 description={`This permanently removes ${bill.invoice_no} for ${bill.customer_name} and can't be undone.`}
                 disabled={moved}
-                onConfirm={() => deleteBill.mutate(bill.id)}
+                onConfirm={() =>
+                  deleteBill.mutate(bill.id, {
+                    onSuccess: () => toast.success("Bill deleted"),
+                    onError: (e) => toast.error(e.message),
+                  })
+                }
               />
             </div>
           )}
@@ -1088,7 +1119,11 @@ export function BillsTab() {
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault();
-                if (deleteTarget) deleteBill.mutate(deleteTarget.id);
+                if (deleteTarget)
+                  deleteBill.mutate(deleteTarget.id, {
+                    onSuccess: () => toast.success("Bill deleted"),
+                    onError: (e) => toast.error(e.message),
+                  });
                 setDeleteTarget(null);
               }}
             >

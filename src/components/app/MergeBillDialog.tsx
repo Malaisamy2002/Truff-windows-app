@@ -201,7 +201,7 @@ export function MergeBillDialog() {
                 checked={turfIds.includes(b.id)}
                 onCheckedChange={() => toggle(turfIds, setTurfIds, b.id)}
               />
-              <span className="flex-1">
+              <span className="min-w-0 flex-1 truncate">
                 {b.booking_no} · {b.customer_name} · {formatDMY(b.booking_date)}
               </span>
               <span className="font-medium">{money(b.total_amount)}</span>
@@ -222,7 +222,7 @@ export function MergeBillDialog() {
                 checked={snackIds.includes(s.id)}
                 onCheckedChange={() => toggle(snackIds, setSnackIds, s.id)}
               />
-              <span className="flex-1">
+              <span className="min-w-0 flex-1 truncate">
                 {s.bill_no}
                 {s.customer_name ? ` · ${s.customer_name}` : ""} ·{" "}
                 {formatDMY(s.sale_date)}

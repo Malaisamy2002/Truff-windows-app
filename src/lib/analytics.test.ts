@@ -844,4 +844,24 @@ describe("no double counting when a balance moves to dues", () => {
     expect(paymentSplit(onTab, matches)).toEqual([]);
     expect(periodStats(onTab, matches, settings()).collected).toBe(0);
   });
+
+  it("counts a 'paid' bill's full gross under its payment mode, even when amount_paid is left stale/zero", () => {
+    // A bill marked "paid" has a zero balance by definition — its real
+    // collected amount is the gross total, not whatever amount_paid was
+    // left at (same convention as periodStats/dues.ts's billCollected()).
+    // Reading amount_paid raw would silently drop this bill's money from
+    // the chart entirely.
+    const b = src({
+      bills: [
+        bill({
+          status: "paid",
+          amount_paid: 0,
+          total: 1000,
+          tax_amount: 180,
+          payment_mode: "UPI",
+        }),
+      ],
+    });
+    expect(paymentSplit(b, matches)).toEqual([{ name: "UPI", value: 1180 }]);
+  });
 });

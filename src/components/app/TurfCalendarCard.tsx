@@ -7,7 +7,7 @@ import { money } from "@/lib/biz";
 import { cn, localDateStr } from "@/lib/utils";
 import { useTurfBookings, type TurfBooking } from "@/lib/ops";
 import { isFinancialBooking } from "@/lib/analytics";
-import { parseMinutes } from "./TimeSlotPicker";
+import { parseMinutes } from "@/lib/time-slot-utils";
 import { LayoutPart, LayoutParts } from "./LayoutSection";
 
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];

@@ -58,7 +58,7 @@ import { LayoutPart, LayoutParts } from "./LayoutSection";
 import { ConfirmDeleteButton } from "./ConfirmDeleteButton";
 import { RecordActionRow } from "./RecordActionRow";
 import { SortMenu } from "./SortMenu";
-import { usePrintPreview } from "./PrintPreviewDialog";
+import { usePrintPreview } from "@/lib/use-print-preview";
 
 const PAGE_SIZE = 25;
 

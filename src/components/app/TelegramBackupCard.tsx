@@ -70,7 +70,7 @@ import {
   SettingsSwitchRow,
 } from "./SettingsField";
 import { BackupEncryptionSettings } from "./BackupEncryptionSettings";
-import { TABLE_LABELS } from "./BackupCard";
+import { TABLE_LABELS } from "@/lib/backup-table-labels";
 
 const MAX_BOTS = 10;
 

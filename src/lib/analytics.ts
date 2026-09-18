@@ -10,6 +10,7 @@ import { TAB_PAYMENT_MODE } from "@/lib/ops";
 import type { TabEntry } from "@/lib/tabs";
 import { TAB_REF_BILL } from "@/lib/tabs";
 import {
+  billCollected,
   bookingCashCollected,
   bookingDue,
   isFinancialBooking,
@@ -377,7 +378,12 @@ export function paymentSplit(src: Sources, matches: (iso: string) => boolean) {
   for (const b of src.bills.filter(
     (x) => matches(x.bill_date) && x.status !== "cancelled",
   ))
-    add(b.payment_mode, rupees(b.amount_paid));
+    // NOT rupees(b.amount_paid): a bill marked "paid" has a zero balance by
+    // definition, so billCollected() reports its full gross regardless of
+    // what amount_paid was left at — same convention periodStats/billDue
+    // use. Reading amount_paid directly would silently drop every "paid"
+    // bill's money from this chart (see dues.ts's billCollected()).
+    add(b.payment_mode, billCollected(b));
   for (const b of src.bookings.filter(
     (x) => matches(x.booking_date) && isFinancialBooking(x),
   ))

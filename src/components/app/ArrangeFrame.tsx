@@ -7,7 +7,8 @@ import {
   GripVertical,
   Lock,
 } from "lucide-react";
-import { FramedProvider, useArrangeMode } from "@/lib/arrange-mode";
+import { FramedProvider } from "@/lib/arrange-mode";
+import { useArrangeMode } from "@/lib/arrange-mode-context";
 import {
   LOCKED_SECTION_ID,
   movePart,

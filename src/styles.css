@@ -2,6 +2,17 @@
 @source "../src";
 @import "tw-animate-css";
 
+/*
+ * Self-hosted fonts (bundled at build time via @fontsource, not fetched from
+ * Google Fonts at runtime) — the app is offline-first (Android/Tauri/PWA all
+ * run with no guaranteed connectivity), and a render-blocking <link> to
+ * fonts.googleapis.com in the document head previously stalled first paint
+ * whenever the device had no network. Variable-weight builds so one file
+ * each covers the full 400–800 / 400–600 ranges this app actually uses.
+ */
+@import "@fontsource-variable/inter-tight";
+@import "@fontsource-variable/jetbrains-mono";
+
 @custom-variant dark (&:is(.dark *));
 
 /*
@@ -44,9 +55,9 @@
   --color-bills: var(--bills);
   --color-border: var(--border);
   --color-input: var(--input);
-  --font-display: "Inter Tight", ui-sans-serif, system-ui, sans-serif;
-  --font-sans: "Inter Tight", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-display: "Inter Tight Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter Tight Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, monospace;
 
   --color-ring: var(--ring);
   --color-ring-offset-background: var(--background);
@@ -159,9 +170,22 @@
 
   html {
     font-family: var(--font-sans);
+    min-height: 100%;
+    background: var(--color-background);
+    /* No-op on WebView2, but keeps this file identical in behavior to the
+     * Android build's html rule so the two don't drift apart again. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
 
   body {
+    /* The window is user-resizable down to a narrow width — without this,
+     * content that doesn't shrink (a wide table, a long unbroken label)
+     * forces a horizontal scrollbar on the whole app instead of just
+     * scrolling within its own section. */
+    min-width: 0;
+    min-height: 100dvh;
+    overflow-x: hidden;
     color: var(--color-foreground);
     background-color: var(--color-background);
     background-image:
@@ -169,6 +193,32 @@
       radial-gradient(70rem 40rem at 105% 0%, oklch(0.75 0.08 200 / 18%), transparent 62%);
     background-attachment: fixed;
     -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-x: none;
+  }
+
+  #root {
+    min-height: 100dvh;
+  }
+
+  button,
+  a,
+  [role="button"] {
+    touch-action: manipulation;
+  }
+
+  /* Prevents a wide image, icon or embedded PDF preview from forcing the
+   * window wider than its content area when resized down. */
+  img,
+  svg,
+  canvas {
+    max-width: 100%;
+  }
+
+  input,
+  select,
+  textarea {
+    min-width: 0;
+    max-width: 100%;
   }
 
   /* Figures never jitter as they update */

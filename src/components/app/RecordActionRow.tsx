@@ -8,7 +8,8 @@ import {
   receiptText,
   type ReceiptDoc,
 } from "@/lib/receipt";
-import type { InvoiceSection } from "@/lib/desktop";
+import { openExternal, type InvoiceSection } from "@/lib/desktop";
+import { describeError } from "@/lib/error-capture";
 
 /**
  * Print / Download PDF / Share on WhatsApp / Copy — the row-level action
@@ -63,7 +64,21 @@ export function RecordActionRow({
         variant="outline"
         aria-label={`Print ${noun}`}
         title="Print"
-        onClick={() => printReceipt(doc, undefined, section)}
+        onClick={async () => {
+          // printReceipt() already shows its own success/failure toast for
+          // every path it can reach — this catch is only a safety net for a
+          // failure *before* that (e.g. buildReceiptPdf() throwing on a
+          // malformed doc), which would otherwise reach the app's
+          // unhandledrejection listener and stop there: that listener only
+          // records the error for SSR debugging, never shows the user
+          // anything, so without this the button would just look like it
+          // did nothing.
+          try {
+            await printReceipt(doc, undefined, section);
+          } catch (e) {
+            toast.error("Couldn't print", { description: describeError(e) });
+          }
+        }}
       >
         <Printer className="h-4 w-4" />
       </Button>
@@ -72,7 +87,16 @@ export function RecordActionRow({
         variant="outline"
         aria-label={`Download ${noun}`}
         title="Download PDF"
-        onClick={() => downloadReceipt(doc, undefined, section)}
+        onClick={async () => {
+          // Same safety-net reasoning as Print above.
+          try {
+            await downloadReceipt(doc, undefined, section);
+          } catch (e) {
+            toast.error("Couldn't download PDF", {
+              description: describeError(e),
+            });
+          }
+        }}
       >
         <Download className="h-4 w-4" />
       </Button>
@@ -81,9 +105,26 @@ export function RecordActionRow({
         variant="outline"
         aria-label={`Share ${noun} on WhatsApp`}
         title="Share on WhatsApp"
-        onClick={() => {
+        onClick={async () => {
+          // Raw window.open() doesn't work here: inside the Tauri webview
+          // (both the Windows desktop shell and the Android shell) it's
+          // either a silent no-op or spawns a stray chrome-less webview
+          // instead of handing the link to WhatsApp — the exact reason
+          // openExternal() exists (see its doc comment in desktop.ts) and
+          // is already used by every other WhatsApp button in the app.
+          //
+          // openExternal() never throws, but it does return `false` when
+          // both its primary route and its own fallback fail — that result
+          // was previously discarded, so a full failure showed nothing at
+          // all. Surface it the same way the other three buttons already
+          // surface theirs.
           const url = whatsappUrl(receiptText(doc), phone);
-          window.open(url, "_blank");
+          const opened = await openExternal(url);
+          if (!opened) {
+            toast.error("Couldn't open WhatsApp", {
+              description: "Try Copy instead and paste it into WhatsApp.",
+            });
+          }
         }}
       >
         <Share2 className="h-4 w-4" />

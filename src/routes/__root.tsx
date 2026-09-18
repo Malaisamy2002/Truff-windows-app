@@ -133,16 +133,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           rel: "stylesheet",
           href: appCss,
         },
-        { rel: "preconnect", href: "https://fonts.googleapis.com" },
-        {
-          rel: "preconnect",
-          href: "https://fonts.gstatic.com",
-          crossOrigin: "anonymous",
-        },
-        {
-          rel: "stylesheet",
-          href: "https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap",
-        },
+        // Fonts are self-hosted via @fontsource-variable (bundled at build
+        // time, imported in styles.css) rather than fetched from
+        // fonts.googleapis.com at runtime — this app is offline-first, and
+        // a render-blocking <link> to a remote Google Fonts URL stalls
+        // first paint whenever there's no network, which is a real
+        // possibility for a desktop business app that isn't always online.
         { rel: "icon", href: "/favicon.png", type: "image/png" },
         { rel: "apple-touch-icon", href: "/icons/apple-touch-icon.png" },
         { rel: "manifest", href: "/manifest.webmanifest" },

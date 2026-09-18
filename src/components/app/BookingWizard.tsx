@@ -24,12 +24,8 @@ import {
 import { cn } from "@/lib/utils";
 import { money } from "@/lib/biz";
 import { CustomerFields } from "./CustomerFields";
-import {
-  TimeSlotPicker,
-  rangeLabel,
-  hoursLabel,
-  type DayPartId,
-} from "./TimeSlotPicker";
+import { TimeSlotPicker } from "./TimeSlotPicker";
+import { rangeLabel, hoursLabel, type DayPartId } from "@/lib/time-slot-utils";
 import {
   PAYMENT_MODES,
   BOOKING_STATUSES,
@@ -296,8 +292,7 @@ export function BookingWizard({
                   placeholder="0"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Combined total {money(gross)} · after discount{" "}
-                  {money(Math.max(0, gross - (Number(discount) || 0)))}
+                  Combined total {money(gross)} · after discount {money(total)}
                 </p>
               </div>
               <div className="space-y-1">

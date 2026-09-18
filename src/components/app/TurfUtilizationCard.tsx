@@ -3,7 +3,7 @@ import { Flame } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { SectionHeading } from "@/components/app/SectionHeading";
 import { cn, localDateStr } from "@/lib/utils";
-import { DAY_PARTS, parseMinutes } from "./TimeSlotPicker";
+import { DAY_PARTS, parseMinutes } from "@/lib/time-slot-utils";
 import type { TurfBooking } from "@/lib/ops";
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];

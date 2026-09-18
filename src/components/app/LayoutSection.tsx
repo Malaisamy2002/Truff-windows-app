@@ -4,7 +4,7 @@ import {
   useSurfacePartOrder,
   useTabSectionOrder,
 } from "@/lib/layout-prefs";
-import { useAlreadyFramed, useArrangeMode } from "@/lib/arrange-mode";
+import { useAlreadyFramed, useArrangeMode } from "@/lib/arrange-mode-context";
 import { PartFrame, SectionFrame } from "./ArrangeFrame";
 
 /**

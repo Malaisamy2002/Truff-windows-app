@@ -583,7 +583,7 @@ export function PrintSettingsCard() {
           if (!open) setPreviewUrl(null);
         }}
       >
-        <DialogContent className="grid h-[85vh] max-w-5xl grid-rows-[auto_minmax(0,1fr)] gap-3 p-4 sm:rounded-xl">
+        <DialogContent className="grid h-[85vh] max-w-5xl grid-rows-[auto_minmax(0,1fr)] gap-3 p-4 sm:rounded-xl sm:p-4">
           <DialogHeader className="pr-8">
             <DialogTitle>Receipt layout preview</DialogTitle>
             <DialogDescription>

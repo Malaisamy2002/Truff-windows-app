@@ -1,12 +1,13 @@
 import { SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { useArrangeMode } from "@/lib/arrange-mode";
+import { useArrangeMode } from "@/lib/arrange-mode-context";
 import {
   orderedSections,
   usePresets,
   useLayoutPrefs,
 } from "@/lib/layout-prefs";
+import { SettingsActions } from "./SettingsField";
 
 /**
  * Settings → Layout & arrangement.
@@ -34,20 +35,22 @@ export function LayoutSettingsCard() {
 
   return (
     <Card className="frost">
-      <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-5">
+      <CardContent className="flex flex-col gap-3 pt-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <p className="text-sm font-medium">
             {applied ? applied.name : "Custom (unsaved)"}
           </p>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs leading-4 text-muted-foreground">
             {visibleTabs} of {layout.tabs.length} tabs · {visibleSections} of{" "}
             {allSections.length} sections ·{" "}
             {layout.density === "compact" ? "Compact" : "Comfortable"}
           </p>
         </div>
-        <Button size="sm" onClick={start}>
-          <SlidersHorizontal className="h-3.5 w-3.5" /> Arrange this app
-        </Button>
+        <SettingsActions className="sm:shrink-0">
+          <Button size="sm" onClick={start}>
+            <SlidersHorizontal className="h-3.5 w-3.5" /> Arrange this app
+          </Button>
+        </SettingsActions>
       </CardContent>
     </Card>
   );

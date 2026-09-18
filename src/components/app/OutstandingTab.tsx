@@ -19,6 +19,7 @@ import {
   CustomerDetailContent,
 } from "./CustomerDetailDialog";
 import { formatDMY, money, whatsappUrl } from "@/lib/biz";
+import { openExternal } from "@/lib/desktop";
 import { matchesCustomer, useBills, useCustomers } from "@/lib/data";
 import { customerOutstanding } from "@/lib/dues";
 import { sumRupees } from "@/lib/money";
@@ -261,12 +262,15 @@ export function OutstandingTab() {
                   <ContextMenuItem
                     disabled={!r.phone}
                     onSelect={() =>
-                      window.open(
+                      // window.open() is unreliable inside the Tauri
+                      // desktop webview (see openExternal's doc comment in
+                      // desktop.ts) — route through the same helper every
+                      // other WhatsApp button in the app already uses.
+                      void openExternal(
                         whatsappUrl(
                           `Hi ${r.name}, your pending balance is ${money(r.total)}. Thank you!`,
                           r.phone,
                         ),
-                        "_blank",
                       )
                     }
                   >

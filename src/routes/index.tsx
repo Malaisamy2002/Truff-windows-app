@@ -22,11 +22,11 @@ import {
   DataEntryShortcuts,
   ShortcutsHintButton,
 } from "@/components/app/DataEntryShortcuts";
+import { CommandPalette } from "@/components/app/CommandPalette";
 import {
-  CommandPalette,
   useCommandPaletteShortcut,
   MOD_LABEL,
-} from "@/components/app/CommandPalette";
+} from "@/lib/command-palette-shortcut";
 import { BUSINESS_NAME } from "@/lib/biz";
 import { usePrintSettings } from "@/lib/print";
 import { usePersistedState } from "@/lib/ui-prefs";

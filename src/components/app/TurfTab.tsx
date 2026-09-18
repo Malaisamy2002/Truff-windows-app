@@ -80,7 +80,7 @@ import {
   parseMinutes,
   DAY_PARTS,
   type DayPartId,
-} from "./TimeSlotPicker";
+} from "@/lib/time-slot-utils";
 import { TurfCalendarCard } from "./TurfCalendarCard";
 import { BookingWizard, type BookingFormState } from "./BookingWizard";
 import { ConfirmDeleteButton } from "./ConfirmDeleteButton";
@@ -92,7 +92,7 @@ import {
   paymentStateLabel,
   paymentStateBadgeClass,
 } from "@/lib/payment-status";
-import { usePrintPreview } from "./PrintPreviewDialog";
+import { usePrintPreview } from "@/lib/use-print-preview";
 import {
   BOOKING_STATUSES,
   PAYMENT_MODES,
@@ -717,6 +717,7 @@ export function TurfTab({
                 onConfirm={() =>
                   del.mutate(b.id, {
                     onSuccess: () => toast.success("Deleted"),
+                    onError: (e) => toast.error(e.message),
                   })
                 }
               />
@@ -1688,6 +1689,7 @@ export function TurfTab({
                 if (deleteTarget)
                   del.mutate(deleteTarget.id, {
                     onSuccess: () => toast.success("Deleted"),
+                    onError: (e) => toast.error(e.message),
                   });
                 setDeleteTarget(null);
               }}

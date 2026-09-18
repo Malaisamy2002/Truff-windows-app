@@ -1,4 +1,4 @@
-import { rupees, splitHalf } from "./money";
+import { rupees } from "./money";
 import { useEffect, useState } from "react";
 
 export type BackupReminder = "off" | "daily" | "weekly";
@@ -261,13 +261,20 @@ export function taxBreakdown(
   const lines: { label: string; value: number }[] = [];
   let taxAmount = 0;
   for (const t of taxes) {
-    const amount = rupees((taxable * t.rate) / 100);
-    taxAmount += amount;
     if (t.isGst) {
-      const [cgst, sgst] = splitHalf(amount);
-      lines.push({ label: `CGST @${t.rate / 2}%`, value: cgst });
-      lines.push({ label: `SGST @${t.rate / 2}%`, value: sgst });
+      // CGST and SGST must each be rounded independently and be exactly
+      // equal for an intra-state sale — never an uneven split of one
+      // pre-rounded combined figure (GST portals reject a CGST/SGST
+      // mismatch). Splitting a single rounded `amount` in half via
+      // splitHalf() can silently produce CGST != SGST whenever the
+      // combined tax rounds to an odd rupee.
+      const half = rupees((taxable * t.rate) / 200);
+      taxAmount += half * 2;
+      lines.push({ label: `CGST @${t.rate / 2}%`, value: half });
+      lines.push({ label: `SGST @${t.rate / 2}%`, value: half });
     } else {
+      const amount = rupees((taxable * t.rate) / 100);
+      taxAmount += amount;
       lines.push({ label: `${t.label} @${t.rate}%`, value: amount });
     }
   }

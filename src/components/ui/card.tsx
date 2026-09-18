@@ -8,7 +8,11 @@ const Card = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("frost rounded-2xl border text-card-foreground", className)}
+    data-slot="card"
+    className={cn(
+      "frost min-w-0 rounded-2xl border text-card-foreground",
+      className,
+    )}
     {...props}
   />
 ));
@@ -20,7 +24,8 @@ const CardHeader = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("flex flex-col space-y-1.5 p-6", className)}
+    data-slot="card-header"
+    className={cn("flex flex-col space-y-1.5 p-4 md:p-6", className)}
     {...props}
   />
 ));
@@ -60,7 +65,8 @@ const CardContent = React.forwardRef<
   // the sibling selector below drops CardContent's own top padding.
   <div
     ref={ref}
-    className={cn("p-6 [&:not(:first-child)]:pt-0", className)}
+    data-slot="card-content"
+    className={cn("min-w-0 p-4 md:p-6 [&:not(:first-child)]:pt-0", className)}
     {...props}
   />
 ));
@@ -72,7 +78,8 @@ const CardFooter = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("flex items-center p-6 pt-0", className)}
+    data-slot="card-footer"
+    className={cn("flex items-center p-4 pt-0 md:p-6 md:pt-0", className)}
     {...props}
   />
 ));

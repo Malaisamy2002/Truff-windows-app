@@ -4,13 +4,35 @@
  * What it seeds (all tagged so it can be removed exactly):
  *  - 100 customers (`lt-cust-###`), reused by every booking / sale / bill.
  *  - 50 snack items (`lt-item-##`) that start at 100 stock and are actually
- *    depleted by the sales below, with a `snack_stock_history` row per change.
+ *    depleted by the sales below, with a `snack_stock_history` row per
+ *    change. Items are picked with a Pareto-ish popularity weighting (same
+ *    idea as customer selection below) instead of uniformly at random, so
+ *    a handful of fast movers actually run down to the low-stock threshold
+ *    over a month instead of every one of the 50 items coasting near 100.
  *  - Turf bookings spread across SEVEN real hourly slots (11:30 AM → 6:30 PM)
  *    and LOAD_TEST_COURTS courts — never more bookings than courts per slot.
+ *    Most are a single court for one hour, but a small share are a 2-court
+ *    group booking, a 2-hour (two consecutive slots) booking, or both, so
+ *    the multi-court / multi-hour paths (`courts` > 1, `hours` > 1) aren't
+ *    only exercised by hand-written fixtures.
  *  - Varied offers (`discount`) and advances, so dues are a real spread.
  *  - Snack sales, merged-style bills and expenses across the same year.
+ *    A small share of sales have no linked customer (`"Walk-in"`, the same
+ *    convention `verificationSeed.ts` uses) and a small share of sales and
+ *    bills are soft-voided (`cancelled: true` / `status: "cancelled"`) —
+ *    a voided sale restores its items to stock, same as `useVoidSnackSale`.
+ *  - GST 18% + a 5% service charge are switched on before seeding (same
+ *    setup `verificationSeed.ts` audits against), and every booking/sale/
+ *    bill is written with its tax frozen via `freezeTax()` — the same call
+ *    real creation makes — so this dataset exercises the frozen-tax path,
+ *    not just `grossWithTax()`'s live-recompute fallback for legacy rows.
  *  - On the LAST generated day, a handful of bills/bookings pushed onto the
  *    customer's running tab (Dues), so "Moved to dues" has seeded examples.
+ *  - Two of the regular customers also get hand-placed tab activity spread
+ *    earlier in the year: one is charged and pays it off in full (closing
+ *    the tab), the other is charged and only partly pays — so the
+ *    `"payment"` entry kind and tab-closing are covered, not just the
+ *    `"charge"` rows the final-day push writes.
  *
  * Tagging: every document number starts with `LT-` and every row id with
  * `lt-`, so `clearLoadTestData()` removes exactly what a fresh seed writes —
@@ -49,6 +71,8 @@ import {
   type ReportTable,
 } from "./report-pdf";
 import { currentYear } from "./years";
+import { bookingTaxable, freezeTax } from "./biz";
+import { readAppSettings, writeAppSettings } from "./settings";
 
 /* ------------------------------------------------------------------ */
 /* Tags, constants                                                      */
@@ -370,8 +394,25 @@ function buildSnackItems(): SnackItemRow[] {
   }));
 }
 
-const isoAt = (date: string, hour: number, minute = 0) =>
-  new Date(`${date}T${pad(hour, 2)}:${pad(minute, 2)}:00`).toISOString();
+// The app's own bucketing (analytics.ts's monthKey/dayKey) reads bill_date
+// as a UTC instant and adds back a fixed +5:30 IST offset to recover the
+// IST calendar day/month — deliberately independent of whatever timezone
+// the reading device happens to be in. isoAt() must produce a bill_date
+// that actually IS that IST wall-clock moment; building it via
+// `new Date(\`${date}T${hour}:${minute}:00\`).toISOString()` instead parses
+// the string in the HOST MACHINE's local timezone, so it only comes out
+// right when the seeding script happens to run on an IST-clocked machine.
+// On a UTC-clocked machine (a CI runner, most dev laptops, this sandbox)
+// every bill_date silently lands ~5.5h later than intended — enough to
+// push month-end bills into the next month, or a Dec-31 bill into the
+// next year entirely, outside the seeded one-year window.
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+const isoAt = (date: string, hour: number, minute = 0) => {
+  const [y, m, d] = date.split("-").map(Number) as [number, number, number];
+  return new Date(
+    Date.UTC(y, m - 1, d, hour, minute, 0) - IST_OFFSET_MS,
+  ).toISOString();
+};
 
 const dateStr = (y: number, m: number, d: number) =>
   `${y}-${pad(m, 2)}-${pad(d, 2)}`;
@@ -386,9 +427,40 @@ export async function seedLoadTestData(
   const rand = mulberry32(20260903);
   const year = loadTestYear();
 
+  // Match the tax setup `verificationSeed.ts`'s hand-computed expectations
+  // use, so every generated row below can have its tax frozen via
+  // freezeTax() (the frozen-tax path) instead of writing tax_amount: 0 and
+  // only ever exercising grossWithTax()'s live-recompute fallback. Not
+  // restored afterwards — same precedent as verificationSeed.ts, which also
+  // leaves GST switched on once it seeds.
+  const taxSettings = {
+    ...readAppSettings(),
+    gstEnabled: true,
+    gstRate: 18,
+    customTaxes: [
+      { id: "svc", label: "Service Charge", rate: 5, enabled: true },
+    ],
+  };
+  writeAppSettings(taxSettings);
+
   const { rows: customerRows, pick: pickCustomer } = buildCustomers(rand);
   const items = buildSnackItems();
   const stock = new Map(items.map((i) => [i.id, LOAD_TEST_STOCK_START]));
+  // Pareto-ish popularity, same idea as buildCustomers()'s weighting: a few
+  // fast-moving items (the front of SNACK_CATALOGUE — Tea, Coffee, Samosa…)
+  // sell far more than the tail, so stock genuinely runs down to the
+  // low-stock threshold on some items instead of every item coasting near
+  // its starting 100 units all month.
+  const itemWeights = items.map((_, i) => 1 / Math.pow(i + 1, 0.55));
+  const itemWeightTotal = itemWeights.reduce((a, b) => a + b, 0);
+  const pickItem = () => {
+    let r = rand() * itemWeightTotal;
+    for (let i = 0; i < items.length; i++) {
+      r -= itemWeights[i]!;
+      if (r <= 0) return items[i]!;
+    }
+    return items[0]!;
+  };
 
   await db.transaction("rw", db.customers, db.snack_items, async () => {
     await db.customers.bulkPut(customerRows);
@@ -428,11 +500,19 @@ export async function seedLoadTestData(
 
       /* ---- turf bookings: real slots, capped by courts ---- */
       const busy = (weekend ? 1.25 : 0.9) * (0.75 + rand() * 0.6);
+      // `${slotIndex}:${court}` cells already claimed by a booking — either
+      // this slot's own loop iteration, or a multi-court / multi-hour
+      // booking created a bit earlier that reaches forward into this cell.
+      // Never exceeded LOAD_TEST_COURTS cells claimed per slot, same
+      // invariant as before.
+      const consumedCells = new Set<string>();
       for (let s = 0; s < LOAD_TEST_SLOTS.length; s++) {
         const slot = LOAD_TEST_SLOTS[s]!;
         // Evening slots fill first, late-morning slots stay quieter.
         const slotPull = 0.6 + (s / (LOAD_TEST_SLOTS.length - 1)) * 0.8;
         for (let court = 1; court <= LOAD_TEST_COURTS; court++) {
+          const cellKey = `${s}:${court}`;
+          if (consumedCells.has(cellKey)) continue;
           const chance =
             cfg.occupancy * busy * slotPull * (court === 1 ? 1 : 0.7);
           if (rand() > chance) continue;
@@ -441,8 +521,34 @@ export async function seedLoadTestData(
           const rate = weekend
             ? 1000 + Math.floor(rand() * 5) * 100
             : 700 + Math.floor(rand() * 4) * 100;
-          const hours = 1;
-          const turfAmount = rupees(rate * hours);
+
+          // Group size: usually just this court, occasionally the group
+          // also takes the next court(s) over (a bigger group booking).
+          let courtsUsed = 1;
+          while (
+            courtsUsed < LOAD_TEST_COURTS - court + 1 &&
+            !consumedCells.has(`${s}:${court + courtsUsed}`) &&
+            rand() < 0.12
+          ) {
+            courtsUsed++;
+          }
+
+          // Duration: usually the one hourly slot, occasionally extended
+          // into the next slot too (same court(s) must be free there).
+          let hours = 1;
+          if (s + 1 < LOAD_TEST_SLOTS.length && rand() < (weekend ? 0.12 : 0.06)) {
+            let nextFree = true;
+            for (let c = court; c < court + courtsUsed; c++) {
+              if (consumedCells.has(`${s + 1}:${c}`)) nextFree = false;
+            }
+            if (nextFree) hours = 2;
+          }
+          for (let c = court; c < court + courtsUsed; c++) {
+            consumedCells.add(`${s}:${c}`);
+            if (hours === 2) consumedCells.add(`${s + 1}:${c}`);
+          }
+
+          const turfAmount = rupees(rate * hours * courtsUsed);
           // Offer: usually none, otherwise a 5–20% cut or a flat amount.
           const roll = rand();
           const discount =
@@ -462,6 +568,18 @@ export async function seedLoadTestData(
               : rand() < 0.7
                 ? "Completed"
                 : "Confirmed";
+          const tax = freezeTax(
+            bookingTaxable({
+              turf_amount: turfAmount,
+              hours,
+              rate_per_hour: rate,
+              courts: courtsUsed,
+              snacks_total: 0,
+              discount,
+              total_amount: total,
+            }),
+            taxSettings,
+          );
           seq++;
           const id = `${LT_ID}bk-${pad(seq)}`;
           const row: TurfBookingRow = {
@@ -474,8 +592,8 @@ export async function seedLoadTestData(
             hours,
             rate_per_hour: rate,
             total_amount: total,
-            tax_amount: 0,
-            tax_lines: [],
+            tax_amount: tax.taxAmount,
+            tax_lines: tax.taxLines,
             advance_paid: advance,
             payment_mode:
               advance > 0
@@ -485,8 +603,8 @@ export async function seedLoadTestData(
             discount,
             notes: "load-test",
             start_time: slot.start,
-            end_time: slot.end,
-            courts: 1,
+            end_time: hours === 2 ? LOAD_TEST_SLOTS[s + 1]!.end : slot.end,
+            courts: courtsUsed,
             snacks: [],
             snacks_total: 0,
             turf_amount: turfAmount,
@@ -504,7 +622,12 @@ export async function seedLoadTestData(
         Math.round(cfg.sales * (weekend ? 1.4 : 1) * (0.6 + rand())),
       );
       for (let n = 0; n < saleCount; n++) {
-        const cust = pickCustomer();
+        // ~10% of sales have no linked customer — a walk-in buying snacks
+        // without a turf booking, same convention verificationSeed.ts uses
+        // for its SB-0002 fixture. Previously every generated sale was
+        // attached to one of the 100 seeded customers.
+        const isWalkIn = rand() < 0.1;
+        const cust = isWalkIn ? null : pickCustomer();
         const lineCount = 1 + Math.floor(rand() * 3);
         const lines: {
           item_name: string;
@@ -516,7 +639,7 @@ export async function seedLoadTestData(
         let total = 0;
         let profit = 0;
         for (let l = 0; l < lineCount; l++) {
-          const item = items[Math.floor(rand() * items.length)]!;
+          const item = pickItem();
           const have = stock.get(item.id) ?? 0;
           if (have <= 0) continue;
           const qty = Math.min(have, 1 + Math.floor(rand() * 3));
@@ -543,16 +666,38 @@ export async function seedLoadTestData(
           });
         }
         if (!lines.length) continue;
+        // ~3% soft-voided: mirrors useVoidSnackSale — the sale stays as a
+        // historical record (cancelled: true) but its items go straight
+        // back on the shelf, with a stock-history row for the restock.
+        const isCancelled = rand() < 0.03;
+        if (isCancelled) {
+          for (const line of lines) {
+            const item = items.find((i) => i.item_name === line.item_name)!;
+            const have = stock.get(item.id) ?? 0;
+            const next = have + line.qty;
+            stock.set(item.id, next);
+            history.push({
+              id: `${LT_ID}sh-${pad(++seq)}`,
+              item_id: item.id,
+              item_name: item.item_name,
+              delta: line.qty,
+              previous_quantity: have,
+              new_quantity: next,
+              created_at: isoAt(date, 14, (n * 3) % 60),
+            });
+          }
+        }
+        const tax = freezeTax(total, taxSettings);
         seq++;
         sales.push({
           id: `${LT_ID}sale-${pad(seq)}`,
           bill_no: `${LT_PREFIX}SB-${pad(seq)}`,
           sale_date: date,
-          customer_name: cust.name,
+          customer_name: cust ? cust.name : "Walk-in",
           items: lines,
           total: rupees(total),
-          tax_amount: 0,
-          tax_lines: [],
+          tax_amount: tax.taxAmount,
+          tax_lines: tax.taxLines,
           profit: rupees(profit),
           payment_mode: PAY_MODES[Math.floor(rand() * PAY_MODES.length)]!,
           notes: "load-test",
@@ -560,6 +705,7 @@ export async function seedLoadTestData(
           booking_no: null,
           created_at: isoAt(date, 13, n % 60),
           merged_into_bill_id: null,
+          ...(isCancelled ? { cancelled: true } : {}),
         });
       }
 
@@ -571,14 +717,25 @@ export async function seedLoadTestData(
         const discount =
           rand() < 0.7 ? 0 : rupees(base * (0.05 + rand() * 0.15));
         const total = Math.max(0, rupees(base - discount));
+        // ~3% cancelled bills — void, not unpaid (biz.ts's BillStatus):
+        // excluded from dues, no amount ever collected against it.
+        const isCancelled = rand() < 0.03;
         const payRoll = rand();
-        const paid =
-          payRoll < 0.5
+        const paid = isCancelled
+          ? 0
+          : payRoll < 0.5
             ? total
             : payRoll < 0.8
               ? rupees(total * (0.3 + rand() * 0.4))
               : 0;
-        const status = paid >= total ? "paid" : paid > 0 ? "partial" : "unpaid";
+        const status = isCancelled
+          ? "cancelled"
+          : paid >= total
+            ? "paid"
+            : paid > 0
+              ? "partial"
+              : "unpaid";
+        const tax = freezeTax(total, taxSettings);
         seq++;
         const id = `${LT_ID}bill-${pad(seq)}`;
         const row: BillRow = {
@@ -598,8 +755,8 @@ export async function seedLoadTestData(
           subtotal: base,
           discount,
           total,
-          tax_amount: 0,
-          tax_lines: [],
+          tax_amount: tax.taxAmount,
+          tax_lines: tax.taxLines,
           amount_paid: status === "paid" ? 0 : paid,
           status,
           payment_mode:
@@ -613,12 +770,35 @@ export async function seedLoadTestData(
 
       /* ---- expenses ---- */
       if (rand() < cfg.expenses) {
+        // Real categories the app renders icons for (see CATEGORY_ICONS in
+        // expenses.ts) — previously "maintenance"/"ingredients" didn't
+        // match any of these (wrong case, and "ingredients" isn't a real
+        // category at all), so every load-test expense fell back to the
+        // generic "Other" icon regardless of its actual category text.
+        const turfCategories = [
+          "Maintenance",
+          "Electricity",
+          "Rent",
+          "Staff Wages",
+          "Equipment",
+          "Transport",
+          "Other",
+        ];
+        const snackCategories = [
+          "Raw Material",
+          "Staff Wages",
+          "Electricity",
+          "Transport",
+          "Other",
+        ];
+        const business = rand() < 0.5 ? "Turf" : "Snacks";
+        const categories = business === "Turf" ? turfCategories : snackCategories;
         seq++;
         expenses.push({
           id: `${LT_ID}exp-${pad(seq)}`,
           expense_no: `${LT_PREFIX}TX-${pad(seq)}`,
-          business: rand() < 0.5 ? "Turf" : "Snacks",
-          category: rand() < 0.5 ? "maintenance" : "ingredients",
+          business,
+          category: categories[Math.floor(rand() * categories.length)]!,
           description: "Load test expense",
           note: null,
           amount: rupees(200 + rand() * 3000),
@@ -754,7 +934,12 @@ export async function seedLoadTestData(
   const billCandidates = dayFirst(
     lastDayBills,
     (b) => b.created_at.slice(0, 10) === lastDate,
-  ).filter((b) => b.status !== "paid" && b.total - b.amount_paid > 0);
+  ).filter(
+    (b) =>
+      b.status !== "paid" &&
+      b.status !== "cancelled" &&
+      b.total - b.amount_paid > 0,
+  );
   const bookingCandidates = dayFirst(
     lastDayBookings,
     (b) => b.booking_date === lastDate,
@@ -786,6 +971,90 @@ export async function seedLoadTestData(
         b.id,
       );
   }
+
+  /* ---- §7b: hand-placed tab activity earlier in the year ----
+   * §7 above only ever writes "charge" rows, all dated the final day — the
+   * "payment" entry kind and tab-closing are never exercised by the
+   * generated dataset. Two of the regular customers (customerRows[0]/[1],
+   * the most-weighted — so also the customers most likely to show up
+   * elsewhere in their own booking/sale history) get a small hand-placed
+   * ledger instead: */
+  const manualEntry = (
+    cust: Cust,
+    kind: "charge" | "payment",
+    amount: number,
+    business: string,
+    date: string,
+    note: string,
+  ) => {
+    const value = rupees(amount);
+    if (value <= 0) return;
+    const key = tabKey(cust.name, cust.phone);
+    let tab = tabs.get(key);
+    if (!tab) {
+      tab = {
+        id: `${LT_ID}tab-${pad(tabs.size, 3)}`,
+        customer_key: key,
+        customer_name: cust.name,
+        phone: cust.phone,
+        status: "open",
+        opened_at: isoAt(date, 12, 0),
+        closed_at: null,
+        created_at: isoAt(date, 12, 0),
+      };
+      tabs.set(key, tab);
+    }
+    entries.push({
+      id: `${LT_ID}tabentry-${pad(++tabSeq, 3)}`,
+      tab_id: tab.id,
+      customer_key: key,
+      kind,
+      business,
+      amount: value,
+      note,
+      ref_type: null,
+      ref_id: null,
+      source_ref_type: null,
+      source_ref_id: null,
+      payment_mode: kind === "payment" ? "Cash" : null,
+      entry_date: date,
+      created_at: isoAt(date, 12, 0),
+    });
+  };
+
+  const regular1 = customerRows[0]!;
+  const regular2 = customerRows[1]!;
+
+  // Regular #1: a manual due charged mid-year, paid off in full a week
+  // later, tab explicitly closed — the ordinary "settle and close" flow.
+  manualEntry(regular1, "charge", 800, "Turf", dateStr(year, 6, 10), "Load test — manual due");
+  manualEntry(
+    regular1,
+    "payment",
+    800,
+    "Shared",
+    dateStr(year, 6, 17),
+    "Load test — settled",
+  );
+  const closedTab = tabs.get(tabKey(regular1.name, regular1.phone));
+  if (closedTab) {
+    closedTab.status = "closed";
+    closedTab.closed_at = isoAt(dateStr(year, 6, 17), 12, 0);
+  }
+
+  // Regular #2: charged, then only PARTLY paid a couple of weeks later —
+  // stays open with a real balance, separate from (and earlier than) the
+  // Dec-31 "moved to dues" push, exercising the ordinary partial-payment
+  // flow on its own.
+  manualEntry(regular2, "charge", 1200, "Snacks", dateStr(year, 3, 5), "Load test — manual due");
+  manualEntry(
+    regular2,
+    "payment",
+    500,
+    "Shared",
+    dateStr(year, 3, 20),
+    "Load test — part payment",
+  );
 
   if (entries.length) {
     await db.transaction("rw", db.customer_tabs, db.tab_entries, async () => {

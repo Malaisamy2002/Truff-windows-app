@@ -112,6 +112,23 @@ export type CloseDayInput = {
 };
 
 /**
+ * `nowIso()` is millisecond-precision, so two amendments to the same day
+ * within one event-loop tick (e.g. a double-tap on "save") can land on the
+ * exact same timestamp. `day_close_history` is ordered by `amended_at` with
+ * no other tiebreaker, so a tie made that ordering (and therefore which
+ * "previous count" shows first) nondeterministic. This keeps each call
+ * strictly after the last one this session, so amendment order is always
+ * well-defined regardless of how fast they happen.
+ */
+let lastAmendedAtMs = 0;
+function monotonicAmendedAt(): string {
+  const now = Date.now();
+  const ms = now > lastAmendedAtMs ? now : lastAmendedAtMs + 1;
+  lastAmendedAtMs = ms;
+  return new Date(ms).toISOString();
+}
+
+/**
  * Close (or re-close) a day. `day` is the natural key — closing again for a
  * day that already has a record amends it in place (same id, fresh
  * `closed_at`) instead of creating a second row, so correcting a mistyped
@@ -137,7 +154,7 @@ export async function closeDay(payload: CloseDayInput): Promise<DayClose> {
       previous_variance: existing.variance,
       previous_note: existing.note,
       previous_closed_at: existing.closed_at,
-      amended_at: nowIso(),
+      amended_at: monotonicAmendedAt(),
     };
     await db.day_close_history.put(historyRow);
   }
