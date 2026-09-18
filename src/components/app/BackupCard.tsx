@@ -177,7 +177,20 @@ export function BackupCard() {
             <input
               ref={fileRef}
               type="file"
-              accept=".db,.json"
+              // Extension-based `accept` filtering is unreliable on Android:
+              // WebView resolves ".db"/".json" to MIME types via
+              // MimeTypeMap before handing them to the system document
+              // picker, but Android has no registered MIME mapping for
+              // ".db" (the file was saved with MIME
+              // "application/octet-stream" — see AndroidSavePlugin.kt).
+              // Depending on WebView version, that either falls back to
+              // showing everything, or silently filters the picker down to
+              // just ".json" — hiding real .db backups. Since
+              // decodeBackupBytes/parseBackup already validate the picked
+              // file's contents and throw a clear error for anything that
+              // isn't a real backup, there's no filtering safety lost by
+              // leaving this unrestricted on Android.
+              accept={isAndroid() ? undefined : ".db,.json"}
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0];
