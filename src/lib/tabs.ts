@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   db,
@@ -102,28 +103,35 @@ export function useTabSummaries() {
   const { data: tabs = [] } = useCustomerTabs();
   const { data: entries = [] } = useTabEntries();
 
-  const map = new Map<string, TabSummary>();
-  for (const tab of tabs) {
-    map.set(tab.customer_key, {
-      tab,
-      entries: [],
-      balance: 0,
-      charged: 0,
-      paid: 0,
-    });
-  }
-  for (const e of entries) {
-    let s = map.get(e.customer_key);
-    if (!s) {
-      s = { tab: null, entries: [], balance: 0, charged: 0, paid: 0 };
-      map.set(e.customer_key, s);
+  // Memoized: this used to rebuild the whole Map on every render of every
+  // caller, which invalidated every downstream useMemo that lists it as a
+  // dependency (e.g. the per-customer dues in the Customers directory, which
+  // re-ran on every keystroke in the search box). Treat the result as
+  // read-only — it is shared between callers.
+  return useMemo(() => {
+    const map = new Map<string, TabSummary>();
+    for (const tab of tabs) {
+      map.set(tab.customer_key, {
+        tab,
+        entries: [],
+        balance: 0,
+        charged: 0,
+        paid: 0,
+      });
     }
-    s.entries.push(e);
-    if (e.kind === "charge") s.charged += rupees(e.amount);
-    else s.paid += rupees(e.amount);
-  }
-  for (const s of map.values()) s.balance = rupees(s.charged - s.paid);
-  return map;
+    for (const e of entries) {
+      let s = map.get(e.customer_key);
+      if (!s) {
+        s = { tab: null, entries: [], balance: 0, charged: 0, paid: 0 };
+        map.set(e.customer_key, s);
+      }
+      s.entries.push(e);
+      if (e.kind === "charge") s.charged += rupees(e.amount);
+      else s.paid += rupees(e.amount);
+    }
+    for (const s of map.values()) s.balance = rupees(s.charged - s.paid);
+    return map;
+  }, [tabs, entries]);
 }
 
 /** Finds an open tab or opens a new one, returning its id. */

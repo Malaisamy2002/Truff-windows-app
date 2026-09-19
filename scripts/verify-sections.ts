@@ -42,9 +42,8 @@ const store = new Map<string, string>();
   dispatchEvent() {},
 };
 
-const { seedLoadTestData, clearLoadTestData, loadTestYear } = await import(
-  "../src/lib/loadtest"
-);
+const { seedLoadTestData, clearLoadTestData, loadTestYear } =
+  await import("../src/lib/loadtest");
 const {
   periodStats,
   statsForMonth,
@@ -59,6 +58,9 @@ const {
 const { bookingDue } = await import("../src/lib/dues");
 const { db } = await import("../src/lib/localdb");
 
+// Deliberately loose: this audit hands the analytics functions raw Dexie rows
+// cast through one shared shape instead of importing every row type.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyRow = Record<string, any>;
 
 let failures = 0;
@@ -85,17 +87,38 @@ const inYear = (iso: string) => String(iso).startsWith(String(year));
 const src = { bills, bookings, sales, expenses, tabEntries } as never;
 const annual = periodStats(src, inYear);
 
-console.log(`\n=== Month-by-month statsForMonth sums vs annual periodStats ===`);
+console.log(
+  `\n=== Month-by-month statsForMonth sums vs annual periodStats ===`,
+);
 const months: string[] = [];
-for (let m = 1; m <= 12; m++) months.push(`${year}-${String(m).padStart(2, "0")}`);
+for (let m = 1; m <= 12; m++)
+  months.push(`${year}-${String(m).padStart(2, "0")}`);
 const monthly = months.map((k) => statsForMonth(src, k));
 for (const field of [
-  "billsRevenue", "billsCollected", "billsDues", "turfRevenue", "snacksRevenue",
-  "tax", "netRevenue", "revenue", "collected", "tabCollected", "expenses",
-  "profit", "dues", "snackProfit",
+  "billsRevenue",
+  "billsCollected",
+  "billsDues",
+  "turfRevenue",
+  "snacksRevenue",
+  "tax",
+  "netRevenue",
+  "revenue",
+  "collected",
+  "tabCollected",
+  "expenses",
+  "profit",
+  "dues",
+  "snackProfit",
 ] as const) {
-  const sum = monthly.reduce((n, s) => n + (s as any)[field], 0);
-  check(`sum(statsForMonth.${field}) over 12 months == annual`, sum, (annual as any)[field]);
+  const sum = monthly.reduce(
+    (n, s) => n + (s as unknown as Record<string, number>)[field]!,
+    0,
+  );
+  check(
+    `sum(statsForMonth.${field}) over 12 months == annual`,
+    sum,
+    (annual as unknown as Record<string, number>)[field]!,
+  );
 }
 
 console.log(`\n=== paymentSplit vs periodStats.collected ===`);
@@ -117,22 +140,50 @@ check(
 console.log(`\n=== profitAndLoss rows vs statsForMonth ===`);
 const pnl = profitAndLoss(src, months);
 for (let i = 0; i < months.length; i++) {
-  check(`P&L[${months[i]}].Revenue == statsForMonth.revenue`, pnl[i]!.Revenue, monthly[i]!.revenue);
-  check(`P&L[${months[i]}].Profit == statsForMonth.profit`, pnl[i]!.Profit, monthly[i]!.profit);
+  check(
+    `P&L[${months[i]}].Revenue == statsForMonth.revenue`,
+    pnl[i]!.Revenue,
+    monthly[i]!.revenue,
+  );
+  check(
+    `P&L[${months[i]}].Profit == statsForMonth.profit`,
+    pnl[i]!.Profit,
+    monthly[i]!.profit,
+  );
 }
 
 console.log(`\n=== taxReport vs periodStats (per month) ===`);
 const tax = taxReport(src, months);
 for (let i = 0; i < months.length; i++) {
-  check(`taxReport[${months[i]}].taxableValue == statsForMonth.netRevenue`, tax[i]!.taxableValue, monthly[i]!.netRevenue);
-  check(`taxReport[${months[i]}].totalTax == statsForMonth.tax`, tax[i]!.totalTax, monthly[i]!.tax);
+  check(
+    `taxReport[${months[i]}].taxableValue == statsForMonth.netRevenue`,
+    tax[i]!.taxableValue,
+    monthly[i]!.netRevenue,
+  );
+  check(
+    `taxReport[${months[i]}].totalTax == statsForMonth.tax`,
+    tax[i]!.totalTax,
+    monthly[i]!.tax,
+  );
   const lineSum = tax[i]!.lines.reduce((n, l) => n + l.value, 0);
-  check(`taxReport[${months[i]}].lines sum == totalTax`, lineSum, tax[i]!.totalTax);
-  check(`taxReport[${months[i]}].grossValue == taxableValue+totalTax`, tax[i]!.grossValue, tax[i]!.taxableValue + tax[i]!.totalTax);
+  check(
+    `taxReport[${months[i]}].lines sum == totalTax`,
+    lineSum,
+    tax[i]!.totalTax,
+  );
+  check(
+    `taxReport[${months[i]}].grossValue == taxableValue+totalTax`,
+    tax[i]!.grossValue,
+    tax[i]!.taxableValue + tax[i]!.totalTax,
+  );
 }
 
 console.log(`\n=== duesAgeing vs hand-summed bookingDue() ===`);
-const ageing = duesAgeing(bookings as AnyRow[], Date.now(), tabEntries as AnyRow[]);
+const ageing = duesAgeing(
+  bookings as AnyRow[],
+  Date.now(),
+  tabEntries as AnyRow[],
+);
 const ageingTotal = ageing.reduce((n, r) => n + r.amount, 0);
 const ageingCount = ageing.reduce((n, r) => n + r.count, 0);
 let handDuesTotal = 0;
@@ -146,29 +197,57 @@ for (const b of bookings as AnyRow[]) {
     handDuesCount++;
   }
 }
-check("duesAgeing total amount == hand-summed bookingDue() over all financial bookings", ageingTotal, handDuesTotal);
-check("duesAgeing total count == hand-summed count", ageingCount, handDuesCount);
+check(
+  "duesAgeing total amount == hand-summed bookingDue() over all financial bookings",
+  ageingTotal,
+  handDuesTotal,
+);
+check(
+  "duesAgeing total count == hand-summed count",
+  ageingCount,
+  handDuesCount,
+);
 
 console.log(`\n=== turfOccupancy vs periodStats/hand-calc (full year) ===`);
 const occ = turfOccupancy(bookings as AnyRow[], inYear, tabEntries as AnyRow[]);
-check("turfOccupancy.revenue == periodStats.turfRevenue", occ.revenue, annual.turfRevenue);
+check(
+  "turfOccupancy.revenue == periodStats.turfRevenue",
+  occ.revenue,
+  annual.turfRevenue,
+);
 check(
   "turfOccupancy.bookingCount == count of financial bookings in year",
   occ.bookingCount,
   (bookings as AnyRow[]).filter(
-    (b) => inYear(b.booking_date) && b.status !== "Cancelled" && !b.merged_into_bill_id,
+    (b) =>
+      inYear(b.booking_date) &&
+      b.status !== "Cancelled" &&
+      !b.merged_into_bill_id,
   ).length,
 );
 const weekdaySum = occ.byWeekday.reduce((n, r) => n + r.revenue, 0);
-check("sum(byWeekday.revenue) == turfOccupancy.revenue", weekdaySum, occ.revenue);
+check(
+  "sum(byWeekday.revenue) == turfOccupancy.revenue",
+  weekdaySum,
+  occ.revenue,
+);
 // byHour splits each booking's revenue proportionally across the clock
-// hours it spans, rounding EACH hour bucket to a whole rupee for display —
-// summing ~3,000+ independently-rounded slices can drift a rupee or two
-// from the (also rounded) total. This is display-rounding noise on a
-// per-hour-of-day breakdown chart, not a financial figure, so it gets a
-// looser tolerance instead of being chased as a bug.
+// hours it spans. It used to round EACH hour bucket to a whole rupee
+// independently, which could drift a rupee or two from the (also rounded)
+// total — display-rounding noise. That's now fixed: turfOccupancy() uses
+// allocateWhole() (money.ts) to reconcile the 24 buckets to the exact
+// whole-rupee total actually attributable to hours, so this must now match
+// exactly whenever every booking in the period has a start/end time (true
+// for the load-test generator). A real gap can still appear if a booking
+// has no start/end time at all (nothing to attribute to an hour) — that's
+// a different, legitimate case, not rounding noise, and isn't exercised by
+// this generator.
 const hourSum = occ.byHour.reduce((n, r) => n + r.revenue, 0);
-check("sum(byHour.revenue) ~= turfOccupancy.revenue (rounding noise, not a bug)", hourSum, occ.revenue, 5);
+check(
+  "sum(byHour.revenue) == turfOccupancy.revenue (exact — allocateWhole)",
+  hourSum,
+  occ.revenue,
+);
 let handUnpaidCount = 0;
 let handUnpaidAmt = 0;
 for (const b of bookings as AnyRow[]) {
@@ -195,12 +274,22 @@ for (const b of bookings as AnyRow[]) {
 check("turfOccupancy.cancelled.count", occ.cancelled.count, handCancelledCount);
 check("turfOccupancy.cancelled.amount", occ.cancelled.amount, handCancelledAmt);
 
-console.log(`\n=== itemPerformance vs periodStats snacksRevenue/snackProfit ===`);
+console.log(
+  `\n=== itemPerformance vs periodStats snacksRevenue/snackProfit ===`,
+);
 const items = itemPerformance(sales as AnyRow[], inYear, 999999);
 const itemRevSum = items.rows.reduce((n, r) => n + r.revenue, 0);
 const itemProfitSum = items.rows.reduce((n, r) => n + r.profit, 0);
-check("sum(itemPerformance.revenue) == periodStats.snacksRevenue", itemRevSum, annual.snacksRevenue);
-check("sum(itemPerformance.profit) == periodStats.snackProfit", itemProfitSum, annual.snackProfit);
+check(
+  "sum(itemPerformance.revenue) == periodStats.snacksRevenue",
+  itemRevSum,
+  annual.snacksRevenue,
+);
+check(
+  "sum(itemPerformance.profit) == periodStats.snackProfit",
+  itemProfitSum,
+  annual.snackProfit,
+);
 
 console.log(
   `\n${failures === 0 ? "ALL SECTION CHECKS PASSED" : `${failures} CHECK(S) FAILED`}`,

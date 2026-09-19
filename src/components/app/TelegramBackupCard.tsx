@@ -61,7 +61,11 @@ import {
   type FullBackupPreview,
   type TelegramConfig,
 } from "@/lib/telegram-backup";
-import { encryptFullBackupBytes } from "@/lib/backup-crypto";
+import {
+  encryptFullBackupBytes,
+  WrongPassphraseError,
+  NoPassphraseSetError,
+} from "@/lib/backup-crypto";
 import {
   SettingsActions,
   SettingsField,
@@ -70,6 +74,7 @@ import {
   SettingsSwitchRow,
 } from "./SettingsField";
 import { BackupEncryptionSettings } from "./BackupEncryptionSettings";
+import { RestorePassphrasePrompt } from "./RestorePassphrasePrompt";
 import { TABLE_LABELS } from "@/lib/backup-table-labels";
 
 const MAX_BOTS = 10;
@@ -93,6 +98,18 @@ export function TelegramBackupCard() {
     from: string;
     mode: "merge" | "replace";
     preview: FullBackupPreview;
+    // The passphrase that actually opened this archive, when it wasn't the
+    // one stored on this device — carried through to confirmRestore so the
+    // real restore step decrypts with the same passphrase the preview did,
+    // instead of trying (and failing) the stored one all over again.
+    passphraseOverride?: string | undefined;
+  } | null>(null);
+  // Set only when decoding with the stored passphrase (or none) has
+  // already failed — see applyRestore below. Holds the bytes and label so
+  // a submitted passphrase can retry without re-fetching/re-picking.
+  const [passphrasePrompt, setPassphrasePrompt] = useState<{
+    bytes: Uint8Array;
+    from: string;
   } | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
@@ -137,11 +154,46 @@ export function TelegramBackupCard() {
    * receipt photos both — then always surfaces the confirm dialog below, for
    * merge as much as replace. A merge that silently added dozens of records
    * with nothing shown anywhere was itself the gap this closes: it matches
-   * `BackupCard`'s single-file restore, which got the same treatment first. */
-  const applyRestore = async (bytes: Uint8Array, from: string) => {
-    const mode = merge ? "merge" : "replace";
-    const preview = await previewFullBackup(bytes, mode);
-    setPending({ bytes, from, mode, preview });
+   * `BackupCard`'s single-file restore, which got the same treatment first.
+   *
+   * The first call for a fetched/picked archive omits `passphraseOverride`,
+   * so `previewFullBackup` tries this device's stored passphrase. If that
+   * throws `WrongPassphraseError`/`NoPassphraseSetError` — an archive from
+   * another device, or from before this device's passphrase was last
+   * changed — this opens `RestorePassphrasePrompt` instead of a dead-end
+   * toast; submitting it calls this again with the typed passphrase, which
+   * is then carried on `pending` so `confirmRestore` decrypts the same way.
+   */
+  const applyRestore = async (
+    bytes: Uint8Array,
+    from: string,
+    passphraseOverride?: string,
+  ) => {
+    try {
+      const mode = merge ? "merge" : "replace";
+      const preview = await previewFullBackup(bytes, mode, passphraseOverride);
+      setPassphrasePrompt(null);
+      setPending({ bytes, from, mode, preview, passphraseOverride });
+    } catch (e) {
+      if (
+        e instanceof WrongPassphraseError ||
+        e instanceof NoPassphraseSetError
+      ) {
+        if (passphraseOverride) {
+          toast.error("That passphrase didn't open this file. Try again.");
+          return;
+        }
+        setPassphrasePrompt({ bytes, from });
+        return;
+      }
+      throw e;
+    }
+  };
+
+  const submitUnlock = (passphrase: string) => {
+    if (!passphrasePrompt) return;
+    const { bytes, from } = passphrasePrompt;
+    void run("unlock", () => applyRestore(bytes, from, passphrase));
   };
 
   const confirmRestore = async () => {
@@ -150,7 +202,11 @@ export function TelegramBackupCard() {
     setShowDetails(false);
     if (!job) return;
     await run("restore", async () => {
-      const result = await restoreFullBackup(job.bytes, job.mode);
+      const result = await restoreFullBackup(
+        job.bytes,
+        job.mode,
+        job.passphraseOverride,
+      );
       await qc.invalidateQueries();
       toast.success(`Restored from ${job.from}`, {
         description: restoreSummary(result),
@@ -709,6 +765,13 @@ export function TelegramBackupCard() {
         open={scanOpen}
         onOpenChange={setScanOpen}
         onResult={onScanned}
+      />
+
+      <RestorePassphrasePrompt
+        open={passphrasePrompt !== null}
+        busy={busy === "unlock"}
+        onCancel={() => setPassphrasePrompt(null)}
+        onSubmit={submitUnlock}
       />
     </section>
   );

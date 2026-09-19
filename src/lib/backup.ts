@@ -200,9 +200,20 @@ export async function pickBackupFile(): Promise<Uint8Array | null> {
  * `decryptFullBackupBytes`); older backups made before encryption was
  * added are plain UTF-8 JSON already and pass through unchanged, so they
  * keep restoring normally.
+ *
+ * `passphraseOverride` is forwarded to `decryptFullBackupBytes` as-is — see
+ * its doc comment. `BackupCard` leaves this unset for the first attempt
+ * (stored device passphrase) and only supplies one after that attempt
+ * throws `WrongPassphraseError`/`NoPassphraseSetError` and the person types
+ * one in, for a file made under a different passphrase (a year archive or
+ * `.db` from another device, or from before this device's passphrase was
+ * last changed).
  */
-export async function decodeBackupBytes(bytes: Uint8Array): Promise<string> {
-  const plain = await decryptFullBackupBytes(bytes);
+export async function decodeBackupBytes(
+  bytes: Uint8Array,
+  passphraseOverride?: string,
+): Promise<string> {
+  const plain = await decryptFullBackupBytes(bytes, passphraseOverride);
   return new TextDecoder().decode(plain);
 }
 

@@ -262,11 +262,13 @@
   text-transform: uppercase;
 }
 
-/* Softer frosted surface for inner rows / chips. */
+/* Softer frosted surface for inner rows / chips. No backdrop-filter here on
+   purpose: kept in sync with the Android repo, where this utility is
+   applied per-row inside scrolling lists and a blurred+composited layer
+   per row was the root cause of a real scroll-perf bug there. The higher
+   solid mix below approximates the frosted look without the blur pass. */
 @utility frost-soft {
-  background: color-mix(in oklab, var(--card) 45%, transparent);
-  backdrop-filter: blur(10px) saturate(1.15);
-  -webkit-backdrop-filter: blur(10px) saturate(1.15);
+  background: color-mix(in oklab, var(--card) 72%, transparent);
   border-color: color-mix(in oklab, var(--border) 60%, transparent);
 }
 

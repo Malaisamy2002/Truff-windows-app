@@ -471,6 +471,33 @@ describe("turfOccupancy()", () => {
     expect(mon.revenue).toBe(1000);
   });
 
+  it("byHour buckets always add up to the exact turf revenue — no per-bucket rounding drift", () => {
+    // Three 3-hour bookings, each splitting ₹100 into three fractional
+    // (₹33.33) hourly slices. Rounding each of the 9 touched hour-buckets
+    // independently (plain Math.round) would total ₹297, three short of
+    // the real ₹300 — the exact drift this test guards against.
+    const mk = (id: string, start: string, end: string) =>
+      booking({
+        id,
+        booking_date: "2026-09-07",
+        start_time: start,
+        end_time: end,
+        total_amount: 100,
+        hours: 3,
+      });
+    const occ = turfOccupancy(
+      [
+        mk("a", "07:00", "10:00"),
+        mk("b", "11:00", "14:00"),
+        mk("c", "15:00", "18:00"),
+      ],
+      matches,
+    );
+    expect(occ.revenue).toBe(300);
+    const sumByHour = occ.byHour.reduce((n, r) => n + r.revenue, 0);
+    expect(sumByHour).toBe(occ.revenue);
+  });
+
   it("falls back to the stored hours field when start/end times are missing", () => {
     const b = booking({
       booking_date: "2026-09-07",

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { money, rupees, splitHalf, sumRupees } from "./money";
+import { allocateWhole, money, rupees, splitHalf, sumRupees } from "./money";
 import { rowTotal } from "./biz";
 import { taxBreakdown } from "./settings";
 
@@ -40,6 +40,43 @@ describe("splitHalf()", () => {
       expect(Number.isInteger(b)).toBe(true);
       expect(a + b).toBe(total);
     }
+  });
+});
+
+describe("allocateWhole()", () => {
+  it("rounds every share to a whole number and sums to the total", () => {
+    const shares = [10.2, 10.2, 10.2, 10.2, 9.2]; // sums to 50.0
+    const out = allocateWhole(shares);
+    expect(out.every((v) => Number.isInteger(v))).toBe(true);
+    expect(out.reduce((a, b) => a + b, 0)).toBe(50);
+  });
+
+  it("the 24-bucket case that motivated it: independent Math.round drifts, this doesn't", () => {
+    // Same shape as turfOccupancy's byHour split: many fractional shares of
+    // one whole-rupee total. Rounding each independently can miss the total
+    // by a rupee or two; allocateWhole() must not.
+    const shares = Array.from({ length: 24 }, (_, i) => 41.6 + (i % 3) * 0.3);
+    const total = Math.round(shares.reduce((a, b) => a + b, 0));
+    const out = allocateWhole(shares, total);
+    expect(out.reduce((a, b) => a + b, 0)).toBe(total);
+    // Every bucket stays within a rupee of its own raw share.
+    for (let i = 0; i < shares.length; i++)
+      expect(Math.abs(out[i]! - shares[i]!)).toBeLessThan(1.5);
+  });
+
+  it("stays exact for negative remainders too (a target below the floor sum)", () => {
+    const shares = [5.9, 5.9, 5.9]; // floors sum to 15
+    const out = allocateWhole(shares, 14); // target below even the floor sum
+    expect(out.reduce((a, b) => a + b, 0)).toBe(14);
+  });
+
+  it("is a no-op shape for a single bucket — same as rupees()", () => {
+    expect(allocateWhole([41.6])).toEqual([42]);
+    expect(allocateWhole([41.4])).toEqual([41]);
+  });
+
+  it("handles an empty list", () => {
+    expect(allocateWhole([])).toEqual([]);
   });
 });
 

@@ -243,12 +243,17 @@ actually collected. Fixed by summing each booking's/sale's own
 `taxReport()` use `netRevenue`/`s.tax` (all three lines) for
 `taxableValue`/`totalTax` instead of `billsRevenue` alone.
 
-**Known limitation, not yet fixed:** `taxReport()`'s per-rate `lines`
-breakdown (the CGST/SGST/custom-tax rows on the GST report) is still
-computed only from `taxBreakdown(billsRevenue, appSettings)` — it doesn't
-split booking/snack tax out by rate label the way `totalTax` now includes
-it in aggregate. Treat `lines` as bills-only detail and `totalTax`/
-`grossValue` as the whole-business figures for filing.
+**Fixed (this note used to say otherwise):** `taxReport()`'s per-rate
+`lines` breakdown (the CGST/SGST/custom-tax rows on the GST report) now
+sums each bill's/booking's/sale's own tax lines by label — a bill's live
+`taxBreakdown(bill.total).lines`, or a booking's/sale's frozen
+`tax_lines` (falling back to `[]`, never a live recompute, for a record
+that has a frozen `tax_amount` but no line detail — the same
+"can't reconstruct a rate breakdown from a total alone" rule
+`taxLinesWithFallback()` in `biz.ts` already applies). `lines` therefore
+already covers all three revenue lines, in step with `totalTax`/
+`grossValue`: `sum(lines) === totalTax` for any period, verified over a
+full random year by `scripts/verify-sections.ts`.
 
 Never apply `taxBreakdown` directly to turf or snack totals — always go
 through their own frozen-tax helpers (`bookingGrossTotal`,

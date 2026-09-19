@@ -1,7 +1,15 @@
-import { useMemo, useState } from "react";
-import { HandCoins, MessageCircle, Receipt, Search } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  HandCoins,
+  MessageCircle,
+  Receipt,
+  Search,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
@@ -170,6 +178,29 @@ export function OutstandingTab() {
   const totalOwed = sumRupees(rows.map((r) => r.total));
   const isMobile = useIsMobile();
 
+  // Same fix as the Android app: this list had no page cap at all, so a
+  // long dues list rendered every row — a per-row context menu on top of
+  // an unbounded row count on desktop too. Capped to match Bills/Bookings.
+  const OUTSTANDING_PAGE_SIZE = 25;
+  const [page, setPage] = useState(1);
+  const pageCount = Math.max(
+    1,
+    Math.ceil(filtered.length / OUTSTANDING_PAGE_SIZE),
+  );
+  const safePage = Math.min(page, pageCount);
+  const pageRows = useMemo(
+    () =>
+      filtered.slice(
+        (safePage - 1) * OUTSTANDING_PAGE_SIZE,
+        safePage * OUTSTANDING_PAGE_SIZE,
+      ),
+    [filtered, safePage],
+  );
+
+  useEffect(() => {
+    setPage(1);
+  }, [q, sort.field, sort.dir, rows.length]);
+
   /** Settling from the row menu needs this customer's own bookings/bills/tab
    * entries — `rows` only carries the aggregate total, not the underlying
    * records — so re-derive them the same way `customerOutstanding()` above
@@ -205,7 +236,7 @@ export function OutstandingTab() {
               : "Nothing outstanding — everyone's settled up."}
           </p>
         ) : (
-          filtered.map((r) => {
+          pageRows.map((r) => {
             const row = (
               <button
                 type="button"
@@ -283,6 +314,30 @@ export function OutstandingTab() {
         )}
       </CardContent>
     </Card>
+  );
+
+  const pager = filtered.length > OUTSTANDING_PAGE_SIZE && (
+    <div className="flex items-center justify-between gap-2 pt-1">
+      <Button
+        variant="outline"
+        className="h-12"
+        disabled={safePage <= 1}
+        onClick={() => setPage(safePage - 1)}
+      >
+        <ChevronLeft className="size-4" /> Prev
+      </Button>
+      <p className="text-sm text-muted-foreground">
+        Page {safePage} of {pageCount} · {filtered.length} outstanding
+      </p>
+      <Button
+        variant="outline"
+        className="h-12"
+        disabled={safePage >= pageCount}
+        onClick={() => setPage(safePage + 1)}
+      >
+        Next <ChevronRight className="size-4" />
+      </Button>
+    </div>
   );
 
   return (
@@ -378,6 +433,7 @@ export function OutstandingTab() {
                     count={filtered.length}
                   >
                     {listCard}
+                    {pager}
                   </ListDisclosure>
                 ) : (
                   <div className="grid grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] items-start gap-4">
@@ -389,6 +445,7 @@ export function OutstandingTab() {
                         </span>
                       </p>
                       {listCard}
+                      {pager}
                     </div>
                     <div className="sticky top-24 min-w-0">
                       {openCustomer ? (

@@ -12,6 +12,8 @@ import {
   ListTree,
   X,
   Trash2,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -403,6 +405,26 @@ export function ExpensesTab() {
         : sortedExpenses,
     [sortedExpenses, expenseDate],
   );
+
+  const EXPENSES_PAGE_SIZE = 25;
+  const [expensePage, setExpensePage] = useState(1);
+  const expensePageCount = Math.max(
+    1,
+    Math.ceil(dateFilteredExpenses.length / EXPENSES_PAGE_SIZE),
+  );
+  const safeExpensePage = Math.min(expensePage, expensePageCount);
+  const pageExpenses = useMemo(
+    () =>
+      dateFilteredExpenses.slice(
+        (safeExpensePage - 1) * EXPENSES_PAGE_SIZE,
+        safeExpensePage * EXPENSES_PAGE_SIZE,
+      ),
+    [dateFilteredExpenses, safeExpensePage],
+  );
+
+  useEffect(() => {
+    setExpensePage(1);
+  }, [expenseDate, expenseSort.field, expenseSort.dir, expenses.length]);
 
   const budgetPct =
     monthBudget > 0 ? Math.min(100, (monthSpent / monthBudget) * 100) : 0;
@@ -1224,7 +1246,7 @@ export function ExpensesTab() {
                             </div>
                           )}
                           <ul className="space-y-2">
-                            {dateFilteredExpenses.map((e) => {
+                            {pageExpenses.map((e) => {
                               const Icon = categoryIcon(e.category);
                               return (
                                 <li
@@ -1296,6 +1318,34 @@ export function ExpensesTab() {
                               );
                             })}
                           </ul>
+                          {dateFilteredExpenses.length > EXPENSES_PAGE_SIZE && (
+                            <div className="flex items-center justify-between gap-2 pt-3">
+                              <Button
+                                variant="outline"
+                                className="h-12"
+                                disabled={safeExpensePage <= 1}
+                                onClick={() =>
+                                  setExpensePage(safeExpensePage - 1)
+                                }
+                              >
+                                <ChevronLeft className="size-4" /> Prev
+                              </Button>
+                              <p className="text-sm text-muted-foreground">
+                                Page {safeExpensePage} of {expensePageCount} ·{" "}
+                                {dateFilteredExpenses.length} expenses
+                              </p>
+                              <Button
+                                variant="outline"
+                                className="h-12"
+                                disabled={safeExpensePage >= expensePageCount}
+                                onClick={() =>
+                                  setExpensePage(safeExpensePage + 1)
+                                }
+                              >
+                                Next <ChevronRight className="size-4" />
+                              </Button>
+                            </div>
+                          )}
                         </>
                       )}
                     </CardContent>

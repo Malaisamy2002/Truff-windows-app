@@ -32,7 +32,12 @@ import {
 import { isAndroid, isDesktop } from "@/lib/desktop";
 import { TABLE_LABELS } from "@/lib/backup-table-labels";
 import { hasBackupPassphrase } from "@/lib/backup-passphrase";
+import {
+  WrongPassphraseError,
+  NoPassphraseSetError,
+} from "@/lib/backup-crypto";
 import { BackupEncryptionSettings } from "./BackupEncryptionSettings";
+import { RestorePassphrasePrompt } from "./RestorePassphrasePrompt";
 import {
   useAppSettings,
   writeAppSettings,
@@ -51,6 +56,13 @@ export function BackupCard() {
     preview: RestorePreview;
   } | null>(null);
   const [showDetails, setShowDetails] = useState(false);
+  // Set only when decoding a picked file with the device's stored
+  // passphrase (or none) has already failed — see applyBackup below. Holds
+  // the file's bytes so a submitted passphrase can retry the same decode
+  // without re-picking the file.
+  const [passphrasePrompt, setPassphrasePrompt] = useState<Uint8Array | null>(
+    null,
+  );
   const { settings: appSettings, save: saveAppSettings } = useAppSettings();
   // `null` = still checking; `false` is what shows the inline encryption
   // setup below. Exports are encrypted unconditionally (downloadBackup ->
@@ -78,13 +90,47 @@ export function BackupCard() {
   /** Reads the file and computes what it would actually do, then always
    * surfaces the confirm dialog below — for merge as much as replace, since
    * "nothing to confirm" was itself misleading when a merge could still add
-   * dozens of records the person hadn't seen listed anywhere. */
-  const applyBackup = async (bytes: Uint8Array) => {
-    const text = await decodeBackupBytes(bytes);
-    const backup = parseBackup(text);
-    const mode = merge ? "merge" : "replace";
-    const preview = await previewRestore(backup, mode);
-    setPending({ backup, mode, preview });
+   * dozens of records the person hadn't seen listed anywhere.
+   *
+   * The first call for a picked file omits `passphraseOverride`, so
+   * decoding tries this device's stored passphrase (the common case: same
+   * device that made the backup). If that throws
+   * `WrongPassphraseError`/`NoPassphraseSetError` — a file made under a
+   * different passphrase, e.g. from another device or from before this
+   * one's was last changed — this opens `RestorePassphrasePrompt` instead
+   * of surfacing a dead-end toast; submitting it calls this again with the
+   * typed passphrase as the override. Any other error (not a valid backup
+   * at all, corrupted file) still surfaces the normal toast via `run`'s
+   * catch, since no passphrase would fix that.
+   */
+  const applyBackup = async (
+    bytes: Uint8Array,
+    passphraseOverride?: string,
+  ) => {
+    try {
+      const text = await decodeBackupBytes(bytes, passphraseOverride);
+      const backup = parseBackup(text);
+      const mode = merge ? "merge" : "replace";
+      const preview = await previewRestore(backup, mode);
+      setPassphrasePrompt(null);
+      setPending({ backup, mode, preview });
+    } catch (e) {
+      if (
+        e instanceof WrongPassphraseError ||
+        e instanceof NoPassphraseSetError
+      ) {
+        if (passphraseOverride) {
+          // A typed passphrase was already wrong — say so and leave the
+          // prompt open for another try, rather than closing it on a
+          // failure the person can immediately fix.
+          toast.error("That passphrase didn't open this file. Try again.");
+          return;
+        }
+        setPassphrasePrompt(bytes);
+        return;
+      }
+      throw e;
+    }
   };
 
   const confirmRestore = async () => {
@@ -104,6 +150,12 @@ export function BackupCard() {
     } finally {
       setBusy(null);
     }
+  };
+
+  const submitUnlock = (passphrase: string) => {
+    if (!passphrasePrompt) return;
+    const bytes = passphrasePrompt;
+    void run("import", () => applyBackup(bytes, passphrase));
   };
 
   return (
@@ -349,6 +401,12 @@ export function BackupCard() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <RestorePassphrasePrompt
+        open={passphrasePrompt !== null}
+        busy={busy === "import"}
+        onCancel={() => setPassphrasePrompt(null)}
+        onSubmit={submitUnlock}
+      />
     </section>
   );
 }

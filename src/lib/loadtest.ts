@@ -536,7 +536,10 @@ export async function seedLoadTestData(
           // Duration: usually the one hourly slot, occasionally extended
           // into the next slot too (same court(s) must be free there).
           let hours = 1;
-          if (s + 1 < LOAD_TEST_SLOTS.length && rand() < (weekend ? 0.12 : 0.06)) {
+          if (
+            s + 1 < LOAD_TEST_SLOTS.length &&
+            rand() < (weekend ? 0.12 : 0.06)
+          ) {
             let nextFree = true;
             for (let c = court; c < court + courtsUsed; c++) {
               if (consumedCells.has(`${s + 1}:${c}`)) nextFree = false;
@@ -792,7 +795,8 @@ export async function seedLoadTestData(
           "Other",
         ];
         const business = rand() < 0.5 ? "Turf" : "Snacks";
-        const categories = business === "Turf" ? turfCategories : snackCategories;
+        const categories =
+          business === "Turf" ? turfCategories : snackCategories;
         seq++;
         expenses.push({
           id: `${LT_ID}exp-${pad(seq)}`,
@@ -980,7 +984,7 @@ export async function seedLoadTestData(
    * elsewhere in their own booking/sale history) get a small hand-placed
    * ledger instead: */
   const manualEntry = (
-    cust: Cust,
+    cust: Pick<CustomerRow, "id" | "name" | "phone">,
     kind: "charge" | "payment",
     amount: number,
     business: string,
@@ -1027,7 +1031,14 @@ export async function seedLoadTestData(
 
   // Regular #1: a manual due charged mid-year, paid off in full a week
   // later, tab explicitly closed — the ordinary "settle and close" flow.
-  manualEntry(regular1, "charge", 800, "Turf", dateStr(year, 6, 10), "Load test — manual due");
+  manualEntry(
+    regular1,
+    "charge",
+    800,
+    "Turf",
+    dateStr(year, 6, 10),
+    "Load test — manual due",
+  );
   manualEntry(
     regular1,
     "payment",
@@ -1046,7 +1057,14 @@ export async function seedLoadTestData(
   // stays open with a real balance, separate from (and earlier than) the
   // Dec-31 "moved to dues" push, exercising the ordinary partial-payment
   // flow on its own.
-  manualEntry(regular2, "charge", 1200, "Snacks", dateStr(year, 3, 5), "Load test — manual due");
+  manualEntry(
+    regular2,
+    "charge",
+    1200,
+    "Snacks",
+    dateStr(year, 3, 5),
+    "Load test — manual due",
+  );
   manualEntry(
     regular2,
     "payment",

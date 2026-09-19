@@ -82,7 +82,9 @@ const STOCK_SORT_OPTIONS: SortOption<StockSortField>[] = [
  * by category with a filter, a last-updated timestamp, and a per-item
  * change history popover. */
 export function SnackStockCard() {
-  const { data: items = [] } = useSnackItems();
+  const { data: itemsData } = useSnackItems();
+  // Stable fallback so the memos below hold while the query is still loading.
+  const items = useMemo(() => itemsData ?? [], [itemsData]);
   const adjust = useAdjustSnackStock();
   const stockTake = useSaveStockTake();
   const [draft, setDraft] = useState<Record<string, string>>({});
@@ -97,8 +99,14 @@ export function SnackStockCard() {
     dir: "asc",
   });
 
-  const active = items.filter((i) => i.is_active);
-  const low = active.filter((i) => i.stock_quantity <= i.low_stock_threshold);
+  // Memoized: this re-renders on every keystroke into a stock-take count
+  // (takeCounts is component state), which was re-filtering the whole
+  // catalog each time even though only one item's count changed.
+  const active = useMemo(() => items.filter((i) => i.is_active), [items]);
+  const low = useMemo(
+    () => active.filter((i) => i.stock_quantity <= i.low_stock_threshold),
+    [active],
+  );
 
   const categories = useMemo(
     () =>
@@ -106,10 +114,15 @@ export function SnackStockCard() {
     [active],
   );
 
-  const visible =
-    category === ALL_CATEGORIES
-      ? active
-      : active.filter((i) => (i.category || "General") === category);
+  // Memoized so `groups` below (which sorts every item) only recomputes when
+  // the list, category, or sort actually changes — not on every keystroke.
+  const visible = useMemo(
+    () =>
+      category === ALL_CATEGORIES
+        ? active
+        : active.filter((i) => (i.category || "General") === category),
+    [active, category],
+  );
 
   // Grouped by category so a long "All categories" list still scans easily;
   // collapses to a single group when a specific category is selected.

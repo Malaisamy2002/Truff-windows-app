@@ -211,6 +211,7 @@ export type RestoreFullBackupResult = {
 export async function restoreFullBackup(
   archiveBytes: Uint8Array | ArrayBuffer,
   mode: "replace" | "merge" = "replace",
+  passphraseOverride?: string,
 ): Promise<RestoreFullBackupResult> {
   let bytes =
     archiveBytes instanceof Uint8Array
@@ -220,7 +221,10 @@ export async function restoreFullBackup(
   // `encryptFullBackupBytes`); older archives made before it are plain
   // zips. `decryptFullBackupBytes` detects and handles both so a backup
   // someone already has saved/sent doesn't become unrestorable.
-  bytes = await decryptFullBackupBytes(bytes);
+  // `passphraseOverride` (from TelegramBackupCard, after a first attempt
+  // with the stored passphrase throws) lets a session made under a
+  // different passphrase still restore.
+  bytes = await decryptFullBackupBytes(bytes, passphraseOverride);
   const zip = await JSZip.loadAsync(bytes);
   const manifestEntry = zip.files[MANIFEST_NAME];
   if (!manifestEntry || manifestEntry.dir)
@@ -370,12 +374,13 @@ export type FullBackupPreview = {
 export async function previewFullBackup(
   archiveBytes: Uint8Array | ArrayBuffer,
   mode: "replace" | "merge" = "replace",
+  passphraseOverride?: string,
 ): Promise<FullBackupPreview> {
   let bytes =
     archiveBytes instanceof Uint8Array
       ? archiveBytes
       : new Uint8Array(archiveBytes);
-  bytes = await decryptFullBackupBytes(bytes);
+  bytes = await decryptFullBackupBytes(bytes, passphraseOverride);
   const zip = await JSZip.loadAsync(bytes);
   const manifestEntry = zip.files[MANIFEST_NAME];
   if (!manifestEntry || manifestEntry.dir)

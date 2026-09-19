@@ -18,7 +18,13 @@ import { db, DATA_TABLES, newId, nowIso } from "./localdb";
 import { sha256Hex } from "./receipts-share";
 import { bytesToBase64 } from "./desktop";
 import { writeBackupPassphrase } from "./backup-passphrase";
-import { encryptFullBackupBytes, isEncryptedBackup } from "./backup-crypto";
+import {
+  encryptFullBackupBytes,
+  encryptBackup,
+  isEncryptedBackup,
+  WrongPassphraseError,
+  NoPassphraseSetError,
+} from "./backup-crypto";
 
 // `readBackupPassphrase`/`writeBackupPassphrase` fall back to
 // `window.localStorage` outside Android/desktop (see backup-passphrase.ts),
@@ -370,5 +376,53 @@ describe("downloadBackup() / decodeBackupBytes() — encryption", () => {
     const plainBytes = new TextEncoder().encode(JSON.stringify(backup));
     const decodedText = await decodeBackupBytes(plainBytes);
     expect(parseBackup(decodedText).format).toBe("turf-snack-ledger");
+  });
+
+  it("throws NoPassphraseSetError for an encrypted file when nothing is stored and no override is given", async () => {
+    // Encrypt under some passphrase, but leave the device passphrase empty
+    // (beforeEach already clears it) and pass no override either — this is
+    // what a picked file hits before BackupCard has anything to try.
+    // encryptFullBackupBytes can't be used here — it refuses to run when no
+    // passphrase is stored — so encrypt directly, as the sibling test does.
+    const bytes = await encryptBackup(
+      new TextEncoder().encode(JSON.stringify(emptyBackup())),
+      "some-file-passphrase",
+    );
+    await expect(decodeBackupBytes(bytes)).rejects.toBeInstanceOf(
+      NoPassphraseSetError,
+    );
+  });
+
+  it("decodeBackupBytes's passphraseOverride opens a file made under a different passphrase", async () => {
+    // Simulates restoring a file from another device (or from before this
+    // device's passphrase was last changed): the stored passphrase here
+    // never matches the one the file was actually encrypted with, so only
+    // the override works. Uses encryptBackup directly (not
+    // encryptFullBackupBytes, which always encrypts under the stored
+    // passphrase) so the file's passphrase and the device's can differ.
+    await writeBackupPassphrase("this-devices-current-passphrase");
+    await db.customers.add({
+      id: newId(),
+      name: "Grace",
+      phone: "456",
+      created_at: nowIso(),
+    });
+    const built = await buildBackup();
+    const bytes = await encryptBackup(
+      new TextEncoder().encode(JSON.stringify(built)),
+      "the-original-file-passphrase",
+    );
+
+    await expect(decodeBackupBytes(bytes)).rejects.toBeInstanceOf(
+      WrongPassphraseError,
+    ); // the device's own passphrase doesn't open a file made under another one
+
+    const decodedText = await decodeBackupBytes(
+      bytes,
+      "the-original-file-passphrase",
+    );
+    expect(parseBackup(decodedText).tables["customers"]).toEqual(
+      built.tables["customers"],
+    );
   });
 });

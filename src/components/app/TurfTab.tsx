@@ -197,8 +197,12 @@ export function TurfTab({
   prefillCustomer,
   onConsumePrefillCustomer,
 }: TurfTabProps = {}) {
-  const { data: rates = [] } = useTurfRates();
-  const { data: bookings = [] } = useTurfBookings();
+  // Stable fallbacks: `data = []` is a new array per render until the query
+  // resolves, which would defeat the memos below that depend on these.
+  const { data: ratesData } = useTurfRates();
+  const { data: bookingsData } = useTurfBookings();
+  const rates = useMemo(() => ratesData ?? [], [ratesData]);
+  const bookings = useMemo(() => bookingsData ?? [], [bookingsData]);
   const create = useCreateTurfBooking();
   const { settings: printSettings } = usePrintSettings();
   const { openPreview, previewDialog } = usePrintPreview();
@@ -219,7 +223,7 @@ export function TurfTab({
    * the empty state, exactly like Bills. */
   const [activeBookingId, setActiveBookingId] = useState<string | null>(null);
 
-  const activeRates = rates.filter((r) => r.is_active);
+  const activeRates = useMemo(() => rates.filter((r) => r.is_active), [rates]);
 
   const [form, setForm] = useState<BookingFormState>({
     booking_date: today(),

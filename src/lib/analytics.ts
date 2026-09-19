@@ -1,4 +1,4 @@
-import { rupees } from "./money";
+import { allocateWhole, rupees } from "./money";
 import type { Bill } from "@/lib/biz";
 import type { ExpenseV2, SnackSale, TurfBooking } from "@/lib/ops";
 import {
@@ -686,20 +686,31 @@ export function turfOccupancy(
     key: string,
     label: string,
     agg: { bookings: number; hours: number; revenue: number },
+    revenueOverride?: number,
   ): OccupancyRow => ({
     key,
     label,
     bookings: agg.bookings,
     hours: Math.round(agg.hours * 100) / 100,
-    revenue: Math.round(agg.revenue),
+    revenue: revenueOverride ?? Math.round(agg.revenue),
     sharePct: bookedHours > 0 ? (agg.hours / bookedHours) * 100 : 0,
   });
 
   const byWeekday = WEEKDAY_LABELS.map((label, i) =>
     row(`wd-${i}`, label, weekdayAgg[i]!),
   );
+  // A booking's revenue is sliced across every hour it spans (see the loop
+  // above), so rounding each of the 24 buckets independently can land a
+  // rupee or two off the true total purely from rounding noise — the same
+  // failure mode §0 already guards against for GST halves. allocateWhole()
+  // reconciles the 24 buckets to add up to the exact whole-rupee revenue
+  // actually attributed to hours (which can be less than the period's full
+  // revenue when a booking has no start/end time and so can't be sliced by
+  // hour at all — that gap is real and left alone; only the rounding noise
+  // is fixed here).
+  const hourRevenue = allocateWhole(hourAgg.map((a) => a.revenue));
   const byHour = hourAgg.map((agg, h) =>
-    row(`hr-${h}`, `${String(h).padStart(2, "0")}:00`, agg),
+    row(`hr-${h}`, `${String(h).padStart(2, "0")}:00`, agg, hourRevenue[h]),
   );
 
   const cancelledRows = period.filter((b) => b.status === "Cancelled");

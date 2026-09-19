@@ -298,25 +298,27 @@ const expectedAug = {
   billsRevenue: 2000 + 1500,
   // Bills' tax, plus k5+k6's live tax fallback. s3's own tax is NOT 450 *
   // TAX (103.5): taxBreakdown() rounds each tax LINE to a whole rupee
-  // before summing, and 5% of 450 is 22.5 -> rupees() rounds that one line
-  // up to 23 (18% GST line stays an exact 81), so s3's tax is 81 + 23 = 104,
-  // not 103.5. This is the same per-line rounding taxBreakdown()'s own
-  // "sum rounded parts, don't round the sum" rule uses everywhere else
+  // before summing. GST's CGST and SGST halves are each rounded on their
+  // own (settings.ts: they must be exactly equal, so no uneven split), so
+  // 9% of 450 is 40.5 -> 41 for CGST and 41 for SGST (82, not the exact
+  // 81), and 5% of 450 is 22.5 -> 23 for the service charge: s3's tax is
+  // 41 + 41 + 23 = 105. This is the same per-line rounding taxBreakdown()'s
+  // own "sum rounded parts, don't round the sum" rule uses everywhere else
   // (calculation-rules.md rule 3) — it just isn't visible on the other
-  // round-hundred amounts in this fixture because 5%/18% of a multiple of
+  // round-hundred amounts in this fixture because 9%/5% of a multiple of
   // 100 is already a whole rupee.
-  tax: (2000 + 1500) * TAX + (1000 + 1500) * TAX + 104,
+  tax: (2000 + 1500) * TAX + (1000 + 1500) * TAX + 105,
   turfRevenue: 1000 + 1500,
   snacksRevenue: 450,
   netRevenue: 3500 + 2500 + 450,
   revenue:
-    3500 + 2500 + 450 + ((2000 + 1500) * TAX + (1000 + 1500) * TAX + 104),
+    3500 + 2500 + 450 + ((2000 + 1500) * TAX + (1000 + 1500) * TAX + 105),
   collected:
     500 /* b2 partial */ +
     grossOf(1500) /* b4 */ +
     1500 /* advance (raw, not tax-inclusive) */ +
     (450 +
-      104) /* s3: snackSaleCollected IS tax-inclusive, 450 + its 104 tax */,
+      105) /* s3: snackSaleCollected IS tax-inclusive, 450 + its 105 tax */,
   expenses: 400,
   profit: 6450 - 400,
   dues:
@@ -438,8 +440,12 @@ section("7. Payment split (money actually received)");
 const splitJul = paymentSplit(src, (iso) => monthKey(iso) === JUL);
 const splitOf = (name: string) =>
   splitJul.find((x) => x.name === name)?.value ?? 0;
-// b1 amount_paid is 0 by design (status paid), advances 400+800 cash, snacks 300 cash / 200 UPI
-check("Jul Cash", splitOf("Cash"), 400 + 800 + 300);
+// b1's amount_paid is 0 by design (status paid), but a paid bill's collected
+// money is its full gross (billCollected()) — so its 1000 counts as Cash here,
+// alongside advances 400+800 and snacks 300 cash / 200 UPI. paymentSplit()
+// reads live app settings, which this script never installs (GST is passed
+// explicitly to periodStats instead), so these figures are pre-tax.
+check("Jul Cash", splitOf("Cash"), 1000 + 400 + 800 + 300);
 check("Jul UPI", splitOf("UPI"), 200);
 check(
   "Jul split total <= collected",

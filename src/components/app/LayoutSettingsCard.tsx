@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -22,11 +23,16 @@ export function LayoutSettingsCard() {
   const { setOn } = useArrangeMode();
 
   const applied = presets.find((p) => p.id === appliedId) ?? null;
-  const visibleTabs = layout.tabs.filter((t) => t.visible).length;
-  const allSections = layout.tabs.flatMap((t) =>
-    orderedSections(layout, t.tabId),
-  );
-  const visibleSections = allSections.filter((s) => s.visible).length;
+  const { visibleTabs, totalSections, visibleSections } = useMemo(() => {
+    const allSections = layout.tabs.flatMap((t) =>
+      orderedSections(layout, t.tabId),
+    );
+    return {
+      visibleTabs: layout.tabs.filter((t) => t.visible).length,
+      totalSections: allSections.length,
+      visibleSections: allSections.filter((s) => s.visible).length,
+    };
+  }, [layout]);
 
   const start = () => {
     setOn(true);
@@ -42,7 +48,7 @@ export function LayoutSettingsCard() {
           </p>
           <p className="text-xs leading-4 text-muted-foreground">
             {visibleTabs} of {layout.tabs.length} tabs · {visibleSections} of{" "}
-            {allSections.length} sections ·{" "}
+            {totalSections} sections ·{" "}
             {layout.density === "compact" ? "Compact" : "Comfortable"}
           </p>
         </div>

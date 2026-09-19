@@ -43,6 +43,23 @@ export class WrongPassphraseError extends Error {
   }
 }
 
+/**
+ * Thrown by `decryptFullBackupBytes` when the file is an encrypted `TSLE`
+ * container but there's no passphrase to try it with — nothing typed in for
+ * this restore, and nothing saved on this device either. Kept distinct from
+ * `WrongPassphraseError` (a passphrase was tried and failed) so a caller can
+ * offer "type the passphrase this file was made with" for both cases
+ * without conflating "you have the wrong one" with "you have none at all".
+ */
+export class NoPassphraseSetError extends Error {
+  constructor() {
+    super(
+      "This backup is encrypted. Enter the passphrase it was created with.",
+    );
+    this.name = "NoPassphraseSetError";
+  }
+}
+
 function concatBytes(...parts: Uint8Array[]): Uint8Array {
   const total = parts.reduce((n, p) => n + p.length, 0);
   const out = new Uint8Array(total);
@@ -188,15 +205,21 @@ export async function encryptFullBackupBytes(
  * ones made before it are plain bytes and are passed through unchanged —
  * detecting and handling both is what keeps a backup someone already has
  * saved/sent from becoming unrestorable.
+ *
+ * `passphraseOverride`, when given, is tried instead of this device's
+ * stored passphrase — for restoring a file made under a different
+ * passphrase (another device, or this device's passphrase changed since).
+ * Callers that don't have one to offer yet should omit it: that keeps the
+ * original "just works with the stored passphrase" behavior, and lets the
+ * caller catch `WrongPassphraseError`/`NoPassphraseSetError` to ask for one
+ * only when the stored passphrase actually didn't work.
  */
 export async function decryptFullBackupBytes(
   bytes: Uint8Array,
+  passphraseOverride?: string,
 ): Promise<Uint8Array> {
   if (!isEncryptedBackup(bytes)) return bytes;
-  const passphrase = await readBackupPassphrase();
-  if (!passphrase)
-    throw new Error(
-      "This backup is encrypted. Enter the same backup passphrase used to create it (Settings → Backup encryption) and try again.",
-    );
+  const passphrase = passphraseOverride || (await readBackupPassphrase());
+  if (!passphrase) throw new NoPassphraseSetError();
   return decryptBackup(bytes, passphrase);
 }

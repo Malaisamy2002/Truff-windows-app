@@ -100,17 +100,36 @@ export function SnacksTab({
   prefillCustomer,
   onConsumePrefillCustomer,
 }: SnacksTabProps = {}) {
-  const { data: snackItems = [] } = useSnackItems();
-  const { data: combos = [] } = useSnackCombos();
-  const { data: bookings = [] } = useTurfBookings();
-  const { data: snackSales = [] } = useSnackSales();
+  // `data = []` would hand back a brand-new array on every render until the
+  // query resolves, defeating every useMemo below that depends on it. Keep the
+  // fallback stable so those memos hold from the very first render.
+  const { data: snackItemsData } = useSnackItems();
+  const { data: combosData } = useSnackCombos();
+  const { data: bookingsData } = useTurfBookings();
+  const { data: snackSalesData } = useSnackSales();
+  const snackItems = useMemo(() => snackItemsData ?? [], [snackItemsData]);
+  const combos = useMemo(() => combosData ?? [], [combosData]);
+  const bookings = useMemo(() => bookingsData ?? [], [bookingsData]);
+  const snackSales = useMemo(() => snackSalesData ?? [], [snackSalesData]);
   const create = useCreateSnackSale();
   const { settings: printSettings } = usePrintSettings();
   const addTabEntry = useAddTabEntry();
 
-  const activeSnacks = snackItems.filter((i) => i.is_active);
-  const activeCombos = combos.filter((c) => c.is_active);
-  const linkableBookings = bookings.filter(isFinancialBooking).slice(0, 30);
+  // Wrapped in useMemo: these were re-filtering the whole snackItems/combos
+  // catalog and the full year's bookings on every render — including every
+  // keystroke while typing a customer name, phone, or note during a sale.
+  const activeSnacks = useMemo(
+    () => snackItems.filter((i) => i.is_active),
+    [snackItems],
+  );
+  const activeCombos = useMemo(
+    () => combos.filter((c) => c.is_active),
+    [combos],
+  );
+  const linkableBookings = useMemo(
+    () => bookings.filter(isFinancialBooking).slice(0, 30),
+    [bookings],
+  );
 
   const [customer, setCustomer] = useState("");
   const [phone, setPhone] = useState("");

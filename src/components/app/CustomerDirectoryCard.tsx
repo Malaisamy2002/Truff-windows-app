@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   Plus,
@@ -46,7 +46,7 @@ import {
 import { customerTag, money } from "@/lib/biz";
 import { isFinancialBooking } from "@/lib/analytics";
 import { customerOutstanding, isFinancialSale } from "@/lib/dues";
-import { matchesCustomer, useBills } from "@/lib/data";
+import { matchesCustomer, useBills, type CustomerRec } from "@/lib/data";
 import { useSnackSales, useTurfBookings } from "@/lib/ops";
 import { exportToExcel } from "@/lib/xlsx";
 import {
@@ -80,6 +80,165 @@ const CUSTOMER_SORT_OPTIONS: SortOption<CustomerSortField>[] = [
   { value: "name", label: "Name (A–Z)", defaultDir: "asc" },
   { value: "due", label: "Outstanding balance", defaultDir: "desc" },
 ];
+
+type CustomerRowProps = {
+  customer: CustomerRec;
+  visits: number;
+  due: number;
+  tabDue: number;
+  isActive: boolean;
+  isChecked: boolean;
+  isMobile: boolean;
+  onToggleSelect: (id: string) => void;
+  onOpen: (who: { name: string; phone: string | null }) => void;
+  onEdit: (target: { id: string; name: string; phone: string }) => void;
+  onDelete: (target: { id: string; name: string }) => void;
+};
+
+/**
+ * One row of the directory. Memoized (and fed only primitives + stable
+ * callbacks) so typing in the search box, ticking a checkbox or paging doesn't
+ * re-render — and re-create the Radix context menu for — every row on the
+ * page, only the ones whose own data changed.
+ */
+const CustomerRow = memo(function CustomerRow({
+  customer: c,
+  visits,
+  due,
+  tabDue,
+  isActive,
+  isChecked,
+  isMobile,
+  onToggleSelect,
+  onOpen,
+  onEdit,
+  onDelete,
+}: CustomerRowProps) {
+  const tag = customerTag(visits);
+  const card = (
+    <div
+      className={cn(
+        "frost-soft lift flex items-center justify-between gap-3 rounded-xl border p-3",
+        isActive ? "border-primary/50 ring-1 ring-primary/30" : undefined,
+      )}
+    >
+      <Checkbox
+        aria-label="Select customer"
+        checked={isChecked}
+        onCheckedChange={() => onToggleSelect(c.id)}
+      />
+      <button
+        type="button"
+        className="min-w-0 flex-1 text-left"
+        onClick={() =>
+          onOpen({
+            name: c.name,
+            phone: c.phone ?? null,
+          })
+        }
+      >
+        <div className="flex items-center gap-2">
+          <p className="truncate text-sm font-medium underline decoration-dotted underline-offset-2">
+            {c.name}
+          </p>
+          <Badge
+            variant={
+              tag === "VIP"
+                ? "default"
+                : tag === "Regular"
+                  ? "secondary"
+                  : "outline"
+            }
+            className="shrink-0 text-[10px]"
+          >
+            {tag}
+          </Badge>
+          {tabDue > 0 && (
+            <Badge variant="destructive" className="shrink-0 text-[10px]">
+              On tab {money(tabDue)}
+            </Badge>
+          )}
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          {c.phone || "No phone"} · {visits} visit
+          {visits === 1 ? "" : "s"}
+          {due > 0 && (
+            <span className="text-destructive"> · Due {money(due)}</span>
+          )}
+        </p>
+      </button>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => onDelete({ id: c.id, name: c.name })}
+      >
+        <Trash2 className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+
+  // Right-click is desktop-only, same as Bills/Bookings/
+  // Outstanding — mobile keeps exactly the plain row it
+  // already had (long-press has no equivalent gesture here).
+  if (isMobile) return <div>{card}</div>;
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{card}</ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem
+          onSelect={() =>
+            goToTab("turf", {
+              name: c.name,
+              phone: c.phone ?? null,
+            })
+          }
+        >
+          <Trophy className="size-4" /> New booking
+        </ContextMenuItem>
+        <ContextMenuItem
+          onSelect={() =>
+            goToTab("snacks", {
+              name: c.name,
+              phone: c.phone ?? null,
+            })
+          }
+        >
+          <Cookie className="size-4" /> New sale
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem
+          onSelect={() =>
+            onOpen({
+              name: c.name,
+              phone: c.phone ?? null,
+            })
+          }
+        >
+          <History className="size-4" /> View history
+        </ContextMenuItem>
+        <ContextMenuItem
+          onSelect={() =>
+            onEdit({
+              id: c.id,
+              name: c.name,
+              phone: c.phone ?? "",
+            })
+          }
+        >
+          <Pencil className="size-4" /> Edit
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem
+          className="text-destructive focus:text-destructive"
+          onSelect={() => onDelete({ id: c.id, name: c.name })}
+        >
+          <Trash2 className="size-4" /> Delete
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+});
 
 export function CustomerDirectoryCard() {
   const { data: customers = [] } = useCustomers();
@@ -121,10 +280,15 @@ export function CustomerDirectoryCard() {
    * customers themselves carry no payment state of their own.
    */
   const [selected, setSelected] = useState<string[]>([]);
-  const toggleSelect = (id: string) =>
-    setSelected((s) =>
-      s.includes(id) ? s.filter((x) => x !== id) : [...s, id],
-    );
+  // Stable identity (functional update, no captured state) so memoized rows
+  // don't re-render just because the parent did.
+  const toggleSelect = useCallback(
+    (id: string) =>
+      setSelected((s) =>
+        s.includes(id) ? s.filter((x) => x !== id) : [...s, id],
+      ),
+    [],
+  );
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
 
   /**
@@ -491,152 +655,26 @@ export function CustomerDirectoryCard() {
                       : "No saved customers yet."}
                   </p>
                 ) : (
-                  displayedCustomers.map((c) => {
-                    const visits = visitsById.get(c.id) ?? 0;
-                    const due = dueById.get(c.id) ?? 0;
-                    const tabDue = tabDueById.get(c.id) ?? 0;
-                    const tag = customerTag(visits);
-                    const isActive =
-                      !isMobile &&
-                      openCustomer?.name === c.name &&
-                      (openCustomer?.phone ?? null) === (c.phone ?? null);
-                    const isChecked = selected.includes(c.id);
-                    const card = (
-                      <div
-                        className={cn(
-                          "frost-soft lift flex items-center justify-between gap-3 rounded-xl border p-3",
-                          isActive
-                            ? "border-primary/50 ring-1 ring-primary/30"
-                            : undefined,
-                        )}
-                      >
-                        <Checkbox
-                          aria-label="Select customer"
-                          checked={isChecked}
-                          onCheckedChange={() => toggleSelect(c.id)}
-                        />
-                        <button
-                          type="button"
-                          className="min-w-0 flex-1 text-left"
-                          onClick={() =>
-                            setOpenCustomer({
-                              name: c.name,
-                              phone: c.phone ?? null,
-                            })
-                          }
-                        >
-                          <div className="flex items-center gap-2">
-                            <p className="truncate text-sm font-medium underline decoration-dotted underline-offset-2">
-                              {c.name}
-                            </p>
-                            <Badge
-                              variant={
-                                tag === "VIP"
-                                  ? "default"
-                                  : tag === "Regular"
-                                    ? "secondary"
-                                    : "outline"
-                              }
-                              className="shrink-0 text-[10px]"
-                            >
-                              {tag}
-                            </Badge>
-                            {tabDue > 0 && (
-                              <Badge
-                                variant="destructive"
-                                className="shrink-0 text-[10px]"
-                              >
-                                On tab {money(tabDue)}
-                              </Badge>
-                            )}
-                          </div>
-
-                          <p className="text-xs text-muted-foreground">
-                            {c.phone || "No phone"} · {visits} visit
-                            {visits === 1 ? "" : "s"}
-                            {due > 0 && (
-                              <span className="text-destructive">
-                                {" "}
-                                · Due {money(due)}
-                              </span>
-                            )}
-                          </p>
-                        </button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() =>
-                            setConfirmDelete({ id: c.id, name: c.name })
-                          }
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    );
-
-                    // Right-click is desktop-only, same as Bills/Bookings/
-                    // Outstanding — mobile keeps exactly the plain row it
-                    // already had (long-press has no equivalent gesture here).
-                    if (isMobile) return <div key={c.id}>{card}</div>;
-                    return (
-                      <ContextMenu key={c.id}>
-                        <ContextMenuTrigger asChild>{card}</ContextMenuTrigger>
-                        <ContextMenuContent>
-                          <ContextMenuItem
-                            onSelect={() =>
-                              goToTab("turf", {
-                                name: c.name,
-                                phone: c.phone ?? null,
-                              })
-                            }
-                          >
-                            <Trophy className="size-4" /> New booking
-                          </ContextMenuItem>
-                          <ContextMenuItem
-                            onSelect={() =>
-                              goToTab("snacks", {
-                                name: c.name,
-                                phone: c.phone ?? null,
-                              })
-                            }
-                          >
-                            <Cookie className="size-4" /> New sale
-                          </ContextMenuItem>
-                          <ContextMenuSeparator />
-                          <ContextMenuItem
-                            onSelect={() =>
-                              setOpenCustomer({
-                                name: c.name,
-                                phone: c.phone ?? null,
-                              })
-                            }
-                          >
-                            <History className="size-4" /> View history
-                          </ContextMenuItem>
-                          <ContextMenuItem
-                            onSelect={() =>
-                              setEditTarget({
-                                id: c.id,
-                                name: c.name,
-                                phone: c.phone ?? "",
-                              })
-                            }
-                          >
-                            <Pencil className="size-4" /> Edit
-                          </ContextMenuItem>
-                          <ContextMenuSeparator />
-                          <ContextMenuItem
-                            className="text-destructive focus:text-destructive"
-                            onSelect={() =>
-                              setConfirmDelete({ id: c.id, name: c.name })
-                            }
-                          >
-                            <Trash2 className="size-4" /> Delete
-                          </ContextMenuItem>
-                        </ContextMenuContent>
-                      </ContextMenu>
-                    );
-                  })
+                  displayedCustomers.map((c) => (
+                    <CustomerRow
+                      key={c.id}
+                      customer={c}
+                      visits={visitsById.get(c.id) ?? 0}
+                      due={dueById.get(c.id) ?? 0}
+                      tabDue={tabDueById.get(c.id) ?? 0}
+                      isActive={
+                        !isMobile &&
+                        openCustomer?.name === c.name &&
+                        (openCustomer?.phone ?? null) === (c.phone ?? null)
+                      }
+                      isChecked={selected.includes(c.id)}
+                      isMobile={isMobile}
+                      onToggleSelect={toggleSelect}
+                      onOpen={setOpenCustomer}
+                      onEdit={setEditTarget}
+                      onDelete={setConfirmDelete}
+                    />
+                  ))
                 )}
               </div>
             );
